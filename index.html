@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chump &amp; Hero</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎳</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Figtree:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FFFDF8; --ink:#1A2B33; --muted:#5E6E75; --line:#E3DDCF;
+  --teal:#13646E; --tealSoft:#E0F0F0; --gold:#E2A72E; --goldSoft:#FBF0D6;
+  --red:#C21E2F; --redSoft:#F8E1E3; --surface:#FFFFFF; --lane:#F3E7CF;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#10191D; --ink:#EEF2F2; --muted:#9AAAB0; --line:#2A3940;
+    --teal:#4FB7C1; --tealSoft:#163339; --gold:#F0BE52; --goldSoft:#3A2F14;
+    --red:#F0646F; --redSoft:#3D1A1E; --surface:#172429; --lane:#2A2418;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10191D; --ink:#EEF2F2; --muted:#9AAAB0; --line:#2A3940;
+  --teal:#4FB7C1; --tealSoft:#163339; --gold:#F0BE52; --goldSoft:#3A2F14;
+  --red:#F0646F; --redSoft:#3D1A1E; --surface:#172429; --lane:#2A2418;
+  color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Figtree,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:680px;margin:0 auto;padding:20px 16px 96px}
+h1,h2,.display{font-family:"Bowlby One",Impact,"Arial Black",sans-serif;font-weight:400;letter-spacing:.01em;margin:0}
+header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:8px 0 18px;border-bottom:3px solid var(--ink)}
+header.top h1{font-size:clamp(2rem,9vw,3.1rem);line-height:.95}
+header.top h1 .amp{color:var(--red)}
+.teamname{font-weight:800;color:var(--teal);font-size:1rem;margin-top:6px;background:none;border:0;padding:0;cursor:pointer;font-family:inherit;text-align:left}
+.mode{font-size:.78rem;color:var(--muted);text-align:right}
+nav.tabs{display:flex;gap:6px;margin:18px 0 20px;overflow-x:auto}
+nav.tabs button{flex:1;min-width:max-content;border:2px solid var(--ink);background:transparent;color:var(--ink);font:800 .95rem Figtree,sans-serif;padding:9px 14px;border-radius:999px;cursor:pointer}
+nav.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.btn{border:0;background:var(--teal);color:#fff;font-weight:800;padding:12px 18px;border-radius:12px;cursor:pointer}
+:root[data-theme="dark"] .btn{color:#0E1A1D}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn{color:#0E1A1D}}
+.btn.ghost{background:transparent;color:var(--teal);border:2px solid var(--teal)}
+.btn.danger{background:transparent;color:var(--red);border:2px solid var(--red);padding:8px 12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+label.field{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:.9rem;color:var(--muted)}
+input[type=text],input[type=date],input[type=number]{background:var(--surface);border:2px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--ink);width:100%}
+input:focus{border-color:var(--teal);outline:none}
+.muted{color:var(--muted)}
+.empty{border:2px dashed var(--line);border-radius:16px;padding:28px 20px;text-align:center;color:var(--muted)}
+
+/* Last night spotlight */
+.spot{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:22px}
+.medal{border-radius:18px;padding:16px;position:relative;overflow:hidden}
+.medal.hero{background:var(--goldSoft);border:2px solid var(--gold)}
+.medal.chump{background:var(--redSoft);border:2px solid var(--red)}
+.medal .kind{font-family:"Bowlby One",Impact,sans-serif;font-size:1.5rem;line-height:1}
+.medal.hero .kind{color:var(--gold)}
+.medal.chump .kind{color:var(--red)}
+.medal .who{font-weight:800;font-size:1.15rem;margin-top:10px;word-break:break-word}
+.medal .sc{color:var(--muted);font-size:.88rem}
+.medal svg{position:absolute;right:-6px;bottom:-8px;width:64px;height:64px;opacity:.22}
+
+/* Standings */
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto;border:2px solid var(--ink);border-radius:16px;background:var(--surface)}
+th,td{padding:11px 10px;text-align:right;white-space:nowrap}
+th{font-size:.8rem;color:var(--muted);font-weight:600;border-bottom:2px solid var(--ink)}
+th:first-child,td:first-child{text-align:left}
+tbody tr+tr td{border-top:1px solid var(--line)}
+td.name{font-weight:800}
+.pill{display:inline-block;min-width:2em;text-align:center;border-radius:999px;padding:1px 8px;font-weight:800}
+.pill.h{background:var(--goldSoft);color:var(--ink)}
+.pill.c{background:var(--redSoft);color:var(--ink)}
+.net.pos{color:var(--teal);font-weight:800}
+.net.neg{color:var(--red);font-weight:800}
+h2{font-size:1.35rem;margin:26px 0 12px}
+
+/* Score entry: the lane */
+.lane{background:var(--lane);border-radius:18px;padding:14px;border:2px solid var(--line)}
+.grid{display:grid;gap:8px;align-items:center}
+.grid .hd{font-size:.8rem;color:var(--muted);font-weight:600;text-align:center}
+.grid .bn{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grid input{text-align:center;padding:10px 4px;font-weight:800;font-variant-numeric:tabular-nums}
+.grid input.bad{border-color:var(--red)}
+.hint{font-size:.85rem;color:var(--muted);margin:10px 2px 0}
+
+/* History */
+.night{border:2px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px;background:var(--surface)}
+.night .date{font-weight:800}
+.games{display:grid;gap:6px;margin-top:10px}
+.game{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.92rem}
+.game b{font-weight:800}
+.tag{font-weight:800}
+.tag.h{color:var(--gold)}
+.tag.c{color:var(--red)}
+
+/* Team */
+.bowler{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.bowler span{font-weight:800}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:600;max-width:90vw;z-index:20;transition:opacity .2s}
+.toast[hidden]{display:none}
+.ro{background:var(--tealSoft);border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:.9rem}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap" id="root"></div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+(function(){
+  var S = {team:'Our Team',games:3,fine:0,bowlers:[],nights:[],pinRequired:false};
+  var view='tonight', loaded=false, busy=false, draft=null, loadError=false;
+  try{var v=location.hash.slice(1);if(['tonight','standings','history','team'].indexOf(v)>=0)view=v}catch(e){}
+  var root=document.getElementById('root');
+  function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function nameOf(id){var b=S.bowlers.find(function(x){return x.id===id});return b?b.name:'Former bowler'}
+  function today(){var d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)}
+  function fmtDate(s){var p=s.split('-');var d=new Date(+p[0],+p[1]-1,+p[2]);return d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric'})}
+  function money(n){return '$'+(Math.round(n*100)/100).toFixed(n%1?2:0)}
+  var toastT;
+  function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(function(){t.hidden=true},3200)}
+
+  // ---- server ----
+  function getPin(){try{return localStorage.getItem('ch-pin')||''}catch(e){return ''}}
+  function setPin(p){try{localStorage.setItem('ch-pin',p)}catch(e){}}
+  function load(){
+    return fetch('/api/state',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){
+      if(view==='tonight'&&loaded&&root.querySelector('.grid'))draft=readDraft();
+      S=d;loaded=true;loadError=false;render();
+    }).catch(function(){loadError=true;if(!loaded)render()});
+  }
+  function act(payload,msg,retried){
+    if(busy)return Promise.resolve(false);busy=true;
+    return fetch('/api/state',{method:'POST',headers:{'Content-Type':'application/json','x-team-pin':getPin()},body:JSON.stringify(payload)})
+      .then(function(r){return r.json().then(function(d){return {r:r,d:d}})})
+      .then(function(x){
+        busy=false;
+        if(x.r.status===401&&!retried){var p=prompt('Enter your team PIN to save');if(p){setPin(p.trim());return act(payload,msg,true)}toast('Saving needs the team PIN.');return false}
+        if(!x.r.ok){toast(x.d.error||'Could not save. Try again.');return false}
+        S=x.d;render();toast(msg);return true;
+      }).catch(function(){busy=false;toast('No connection. Try again.');return false});
+  }
+
+  function judge(night){
+    var out=[];
+    for(var g=0;g<S.games;g++){
+      var entries=[];
+      Object.keys(night.scores).forEach(function(id){var v=night.scores[id][g];if(typeof v==='number')entries.push({id:id,v:v})});
+      if(entries.length<2){out.push(null);continue}
+      var vals=entries.map(function(e){return e.v}),max=Math.max.apply(null,vals),min=Math.min.apply(null,vals);
+      if(max===min){out.push({heroes:[],chumps:[],max:max,min:min,tie:true});continue}
+      out.push({heroes:entries.filter(function(e){return e.v===max}).map(function(e){return e.id}),chumps:entries.filter(function(e){return e.v===min}).map(function(e){return e.id}),max:max,min:min});
+    }
+    return out;
+  }
+  function standings(){
+    var t={};
+    S.bowlers.forEach(function(b){t[b.id]={id:b.id,name:b.name,h:0,c:0,games:0,pins:0,high:0}});
+    S.nights.forEach(function(n){
+      Object.keys(n.scores).forEach(function(id){if(!t[id])return;n.scores[id].forEach(function(v){if(typeof v==='number'){t[id].games++;t[id].pins+=v;if(v>t[id].high)t[id].high=v}})});
+      judge(n).forEach(function(j){if(!j)return;j.heroes.forEach(function(id){if(t[id])t[id].h++});j.chumps.forEach(function(id){if(t[id])t[id].c++})});
+    });
+    return Object.keys(t).map(function(k){return t[k]}).sort(function(a,b){return (b.h-b.c)-(a.h-a.c)||b.h-a.h||(b.games?b.pins/b.games:0)-(a.games?a.pins/a.games:0)});
+  }
+  var pinSvg='<svg viewBox="0 0 40 80" aria-hidden="true"><path fill="currentColor" d="M20 2c5 0 7 5 7 10 0 4-2 7-2 10 0 5 9 14 9 32 0 12-6 24-14 24S6 66 6 54c0-18 9-27 9-32 0-3-2-6-2-10 0-5 2-10 7-10z"/></svg>';
+
+  function render(){
+    var html='<header class="top"><div><h1>Chump <span class="amp">&amp;</span> Hero</h1><button class="teamname" id="renameTeam" aria-label="Rename team">'+esc(S.team)+'</button></div><div class="mode">'+(loaded?'Shared with your team':loadError?'Can’t reach the server':'Loading…')+'</div></header>';
+    html+='<nav class="tabs" role="tablist">'+[['tonight','Bowl night'],['standings','Standings'],['history','History'],['team','Team']].map(function(t){return '<button role="tab" data-view="'+t[0]+'" aria-selected="'+(view===t[0])+'">'+t[1]+'</button>'}).join('')+'</nav>';
+    if(!loaded) html+= loadError?'<div class="empty"><p><b>Couldn’t load your team’s data.</b></p><p>Check your connection, or make sure the database is connected in Vercel.</p><button class="btn" id="retry">Try again</button></div>':'<div class="empty">Loading scores…</div>';
+    else html+= view==='tonight'?vTonight(): view==='standings'?vStandings(): view==='history'?vHistory():vTeam();
+    root.innerHTML=html;wire();
+  }
+  function spotlight(){
+    if(!S.nights.length)return '';
+    var last=S.nights.slice().sort(function(a,b){return b.date.localeCompare(a.date)||b.created-a.created})[0];
+    var j=judge(last),h={},c={};
+    j.forEach(function(x){if(!x)return;x.heroes.forEach(function(id){h[id]=(h[id]||0)+1});x.chumps.forEach(function(id){c[id]=(c[id]||0)+1})});
+    function top(o){var ks=Object.keys(o);if(!ks.length)return null;var m=Math.max.apply(null,ks.map(function(k){return o[k]}));return {ids:ks.filter(function(k){return o[k]===m}),n:m}}
+    var th=top(h),tc=top(c);
+    function card(cls,label,t){return '<div class="medal '+cls+'"><div class="kind">'+label+'</div><div class="who">'+(t?t.ids.map(function(i){return esc(nameOf(i))}).join(' & '):'—')+'</div><div class="sc">'+(t?t.n+' of '+j.filter(Boolean).length+' games':'No result')+'</div>'+pinSvg+'</div>'}
+    return '<p class="muted" style="margin:0 0 8px">Last night out: '+esc(fmtDate(last.date))+'</p><div class="spot">'+card('hero','Hero',th)+card('chump','Chump',tc)+'</div>';
+  }
+  function vTonight(){
+    if(!S.bowlers.length)return '<div class="empty"><p><b>Add your bowlers first.</b></p><p>Head to the Team tab and add everyone who bowls with you.</p><button class="btn" data-go="team">Add bowlers</button></div>';
+    var d=draft||{date:today(),scores:{}};
+    var cols='minmax(80px,1.3fr) '+Array(S.games).fill('minmax(56px,1fr)').join(' ');
+    var g='<div class="grid" style="grid-template-columns:'+cols+'"><div class="hd" style="text-align:left">Bowler</div>';
+    for(var i=0;i<S.games;i++)g+='<div class="hd">Game '+(i+1)+'</div>';
+    S.bowlers.forEach(function(b){g+='<div class="bn">'+esc(b.name)+'</div>';for(var i=0;i<S.games;i++){var v=(d.scores[b.id]||[])[i];g+='<input type="number" inputmode="numeric" min="0" max="300" data-b="'+b.id+'" data-g="'+i+'" value="'+(typeof v==='number'?v:'')+'" aria-label="'+esc(b.name)+' game '+(i+1)+'">'}});
+    g+='</div>';
+    return spotlight()+'<h2 style="margin-top:4px">Log a night</h2><div class="lane"><label class="field" style="margin-bottom:14px">Date<input type="date" id="nDate" value="'+esc(d.date)+'"></label>'+g+'<p class="hint">Leave a box empty if someone sat that game out. Top score each game is the Hero, bottom score is the Chump.</p></div><div class="row" style="margin-top:14px"><button class="btn" id="saveNight">Save night</button></div>';
+  }
+  function vStandings(){
+    if(!S.nights.length)return '<div class="empty"><p><b>No nights logged yet.</b></p><p>Standings show up after your first night out.</p><button class="btn" data-go="tonight">Log a night</button></div>';
+    var rows=standings(),fine=+S.fine||0;
+    var t='<div class="tablewrap"><table><thead><tr><th>Bowler</th><th>Hero</th><th>Chump</th><th>Net</th><th>Avg</th><th>High</th>'+(fine?'<th>Owes</th>':'')+'</tr></thead><tbody>';
+    rows.forEach(function(r){var net=r.h-r.c;t+='<tr><td class="name">'+esc(r.name)+'</td><td><span class="pill h">'+r.h+'</span></td><td><span class="pill c">'+r.c+'</span></td><td class="net '+(net>0?'pos':net<0?'neg':'')+'">'+(net>0?'+':'')+net+'</td><td>'+(r.games?Math.round(r.pins/r.games):'—')+'</td><td>'+(r.high||'—')+'</td>'+(fine?'<td>'+money(r.c*fine)+'</td>':'')+'</tr>'});
+    t+='</tbody></table></div>';
+    var pot=fine?rows.reduce(function(s,r){return s+r.c*fine},0):0;
+    return '<h2 style="margin-top:4px">Season standings</h2>'+t+'<p class="hint">Net is Hero wins minus Chump losses. '+S.nights.length+' night'+(S.nights.length===1?'':'s')+' logged.'+(fine?' Chump pot: <b>'+money(pot)+'</b>.':'')+'</p>';
+  }
+  function vHistory(){
+    if(!S.nights.length)return '<div class="empty"><p><b>Nothing here yet.</b></p><p>Every night you save lands here, newest first.</p></div>';
+    return '<h2 style="margin-top:4px">History</h2>'+S.nights.slice().sort(function(a,b){return b.date.localeCompare(a.date)||b.created-a.created}).map(function(n){
+      var gs='';
+      judge(n).forEach(function(x,i){
+        if(!x){gs+='<div class="game"><b>G'+(i+1)+'</b><span class="muted">Not enough scores</span></div>';return}
+        if(x.tie){gs+='<div class="game"><b>G'+(i+1)+'</b><span class="muted">Everyone tied at '+x.max+'</span></div>';return}
+        gs+='<div class="game"><b>G'+(i+1)+'</b><span><span class="tag h">Hero</span> '+x.heroes.map(function(id){return esc(nameOf(id))}).join(' & ')+' ('+x.max+')</span><span><span class="tag c">Chump</span> '+x.chumps.map(function(id){return esc(nameOf(id))}).join(' & ')+' ('+x.min+')</span></div>';
+      });
+      return '<div class="night"><div class="row" style="justify-content:space-between"><span class="date">'+esc(fmtDate(n.date))+'</span><button class="btn danger" data-del="'+n.id+'">Delete</button></div><div class="games">'+gs+'</div></div>';
+    }).join('');
+  }
+  function vTeam(){
+    var list=S.bowlers.length?S.bowlers.map(function(b){return '<div class="bowler"><span>'+esc(b.name)+'</span><button class="btn danger" data-rm="'+b.id+'">Remove</button></div>'}).join(''):'<p class="muted">No bowlers yet.</p>';
+    return '<h2 style="margin-top:4px">Bowlers</h2>'+list+'<div class="row" style="margin-top:14px"><input type="text" id="newName" placeholder="Bowler name" maxlength="30" style="flex:1;min-width:160px"><button class="btn" id="addB">Add bowler</button></div>'+
+      '<h2>League settings</h2><div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:120px">Games per night<input type="number" id="setGames" min="1" max="5" value="'+S.games+'"></label><label class="field" style="flex:1;min-width:120px">Chump pays per loss ($)<input type="number" id="setFine" min="0" step="0.5" value="'+(+S.fine||0)+'"></label></div>'+
+      '<div class="row" style="margin-top:12px"><button class="btn ghost" id="saveSet">Save settings</button>'+(S.pinRequired?'<button class="btn ghost" id="changePin">Enter team PIN</button>':'')+'</div><p class="hint">Set the chump fine to 0 to turn off the pot.</p>';
+  }
+  function readDraft(){
+    var d={date:(document.getElementById('nDate')||{}).value||today(),scores:{}};
+    root.querySelectorAll('.grid input').forEach(function(inp){var b=inp.dataset.b,g=+inp.dataset.g;if(!d.scores[b])d.scores[b]=Array(S.games).fill(null);var v=inp.value.trim();d.scores[b][g]=v===''?null:Math.round(+v)});
+    return d;
+  }
+  function $(id){return document.getElementById(id)}
+  function wire(){
+    root.querySelectorAll('[data-view]').forEach(function(b){b.onclick=function(){if(view==='tonight'&&root.querySelector('.grid'))draft=readDraft();view=b.dataset.view;try{history.replaceState(null,'','#'+view)}catch(e){}render()}});
+    root.querySelectorAll('[data-go]').forEach(function(b){b.onclick=function(){view=b.dataset.go;render()}});
+    if($('retry'))$('retry').onclick=load;
+    if($('renameTeam'))$('renameTeam').onclick=function(){var n=prompt('Team name',S.team);if(n&&n.trim())act({action:'settings',team:n.trim()},'Team renamed')};
+    if($('saveNight'))$('saveNight').onclick=function(){
+      var d=readDraft(),bad=false,clean={};
+      root.querySelectorAll('.grid input').forEach(function(inp){var v=inp.value.trim();var ok=v===''||(+v>=0&&+v<=300);inp.classList.toggle('bad',!ok);if(!ok)bad=true});
+      if(bad){toast('Scores must be between 0 and 300.');return}
+      Object.keys(d.scores).forEach(function(id){if(d.scores[id].some(function(v){return typeof v==='number'}))clean[id]=d.scores[id]});
+      if(Object.keys(clean).length<2){toast('Enter scores for at least two bowlers.');return}
+      draft=d;
+      act({action:'addNight',date:d.date,scores:clean},'Night saved').then(function(ok){if(ok){draft=null;view='standings';render()}});
+    };
+    if($('addB')){var add=function(){var n=$('newName').value.trim();if(n)act({action:'addBowler',name:n},n+' added')};$('addB').onclick=add;$('newName').onkeydown=function(e){if(e.key==='Enter')add()}}
+    root.querySelectorAll('[data-rm]').forEach(function(b){b.onclick=function(){var nm=nameOf(b.dataset.rm);if(confirm('Remove '+nm+'? Their past scores stay in history.'))act({action:'removeBowler',id:b.dataset.rm},nm+' removed')}});
+    root.querySelectorAll('[data-del]').forEach(function(b){b.onclick=function(){if(confirm('Delete this night?'))act({action:'deleteNight',id:b.dataset.del},'Night deleted')}});
+    if($('saveSet'))$('saveSet').onclick=function(){act({action:'settings',games:$('setGames').value,fine:$('setFine').value},'Settings saved')};
+    if($('changePin'))$('changePin').onclick=function(){var p=prompt('Team PIN',getPin());if(p!==null){setPin(p.trim());toast('PIN saved on this device')}};
+  }
+
+  render();load();
+  // Pick up teammates' changes, but never while someone is typing scores.
+  setInterval(function(){
+    if(document.hidden||busy)return;
+    var a=document.activeElement;if(a&&a.tagName==='INPUT')return;
+    load();
+  },20000);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)load()});
+})();
+</script>
+</body>
+</html>
