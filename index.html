@@ -228,6 +228,23 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .amtin input{width:86px;text-align:right}
 .jarline{margin:6px 0 0;font-size:.9rem}
 .chips.wrap{flex-wrap:wrap;overflow:visible}
+details.shot{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+details.shot summary{font-size:.92rem}
+.tipsum{color:var(--gold)!important;font-weight:800!important}
+.tipbox{margin:10px 0;display:block;background:var(--goldSoft);border-radius:10px;padding:10px 12px;font-size:.92rem}
+.tipbox b{color:var(--gold);margin-right:4px}
+.readhd{margin:10px 0 6px;font-size:.85rem;font-weight:600;color:var(--muted)}
+.stepper{display:flex;align-items:center;gap:10px}
+.stepper button{width:48px;height:48px;border-radius:12px;border:2px solid var(--ink);background:var(--surface);color:var(--ink);font:800 1.4rem Figtree,system-ui,sans-serif;cursor:pointer;touch-action:manipulation}
+.stepper span{display:flex;flex-direction:column;align-items:center;min-width:110px}
+.stepper span b{font-family:"Bowlby One",Impact,sans-serif;font-weight:400;font-size:1.6rem;line-height:1.1}
+.stepper span small{font-size:.75rem;color:var(--muted)}
+.hits{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.hitb{border-radius:10px;padding:11px 4px;font-weight:800;font-size:.9rem;cursor:pointer;border:2px solid var(--line);background:var(--surface);color:var(--ink);touch-action:manipulation}
+.hitb:active{transform:scale(.96)}
+.hitb.pocket{background:var(--tealSoft);border-color:var(--teal)}
+.hitb.high,.hitb.brooklyn{background:var(--redSoft);border-color:transparent}
+.hitb.light,.hitb.wayLight{background:var(--goldSoft);border-color:transparent}
 .lanecols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
 .lanecol{display:flex;flex-direction:column;gap:6px;min-width:0}
 .lanecol.solo{margin-top:10px;max-width:320px}
@@ -611,6 +628,76 @@ function lanesBlock(){
 }
 const laneFor=(pair,g,f)=>pair&&has(pair[0])&&has(pair[1])?((f+g)%2===0?pair[0]:pair[1]):null;
 
+
+// ---- Shot reads & next-frame tips ----
+const HITS=[{k:'brooklyn',label:'Brooklyn'},{k:'high',label:'High'},{k:'pocket',label:'Pocket'},{k:'light',label:'Light'},{k:'wayLight',label:'Missed light'}];
+const HITL=Object.fromEntries(HITS.map(h=>[h.k,h.label]));
+let xDraft={};
+const shotsOf=(b,g)=>(S.live&&S.live.shots&&S.live.shots[b+':'+g])||[];
+// The line a bowler planned on a lane this game (falls back to earlier games tonight).
+function lineFor(b,g,lane){
+  for(let gg=g;gg>=0;gg--){const n=noteOf(b+':'+gg),x=lane&&n.lanes&&n.lanes[lane];
+    const foot=x&&has(x.foot)?+x.foot:(!lane&&has(n.stand)?+n.stand:null),mark=x&&has(x.mark)?+x.mark:(!lane&&has(n.target)?+n.target:null);
+    if(foot!==null||mark!==null)return {foot,mark,adjAt:+((x?x.adjAt:n.adjAt)||0)}}
+  return {foot:null,mark:null,adjAt:0};
+}
+// Frame of the first ball being read: the last first ball when frames are scored, otherwise the next unread frame.
+function readFrame(b,g){
+  const r=getRolls(b,g);
+  if(r.length){let last=0;for(let i=0;i<r.length;i++)if(nextBall(r.slice(0,i)).max===10)last=i;return Math.min(9,frameOfRolls(r)[last])}
+  const s=shotsOf(b,g);return Math.min(9,s.length?s[s.length-1].f+1:0);
+}
+const inOut=d=>d>0?'in':'out';
+function tipFor(b){
+  const pair=lanePair(),g=lg,s=shotsOf(b,g);
+  const nextF=s.length?s[s.length-1].f+1:readFrame(b,g),ng=nextF>9?g+1:g;
+  const lane=pair?laneFor(pair,ng,nextF%10):null,where=lane?` on lane ${lane}`:'';
+  const hist=[];for(let gg=0;gg<=g;gg++)shotsOf(b,gg).forEach(x=>{if(!pair||+x.lane===+lane)hist.push(x)});
+  if(!hist.length)return {lane,short:'',text:`No reads${where} yet. After your first ball, log where you crossed the arrows and how it hit.`};
+  const last=hist[hist.length-1],prev=hist[hist.length-2],ln=lineFor(b,Math.min(ng,S.games-1),lane),M=ln.mark,F=ln.foot;
+  const missBy=M!==null?last.x-M:0;
+  let text,short,apply=null;
+  if(ln.adjAt&&ln.adjAt>=last.at){
+    text=`You moved to feet ${F}, mark ${M}${where}. Hit your new mark and read the next shot.`;
+    short=`Next${where}: feet ${F}, mark ${M}`;
+  } else if(M!==null&&Math.abs(missBy)>=2){
+    text=`Last shot${where} crossed board ${last.x}, ${Math.abs(missBy)} boards ${inOut(missBy)}side your mark. That’s a missed target, not a lane change. Stay put and hit ${M}.`;
+    short=`Next${where}: stay, hit ${M}`;
+  } else if(last.h==='pocket'){
+    const twice=prev&&prev.h==='pocket';
+    text=`Pocket${where}${twice?' twice in a row. You’re lined up.':'.'} Stay${F!==null?`: feet ${F}`:''}${M!==null?`${F!==null?',':':'} mark ${M}`:''}.`;
+    short=`Next${where}: stay${F!==null?`, feet ${F}`:''}${M!==null?`, mark ${M}`:''}`;
+  } else {
+    const dir=last.h==='high'||last.h==='brooklyn'?1:-1,big=last.h==='brooklyn'||last.h==='wayLight',mag=big?3:2;
+    const group=h=>h==='high'||h==='brooklyn'?1:h==='light'||h==='wayLight'?-1:0;
+    const same=prev&&group(prev.h)===dir&&(M===null||Math.abs(prev.x-M)<2);
+    const nf=F!==null?F+dir*mag:null,nm=M!==null?M+dir:null;
+    const move=`move ${inOut(dir)} ${mag} boards with your feet${nf!==null?` (to ${nf})`:''} and 1 board with your mark${nm!==null?` (to ${nm})`:''}`;
+    const why=dir>0?'The ball is hooking too early or too much.':'The ball isn’t hooking enough to get back to the pocket.';
+    if(same||big){apply=nf!==null&&nm!==null?{lane,foot:nf,mark:nm}:null;text=`${HITL[last.h]}${where}${same?' twice in a row':''}. ${why} Next time${where}, ${move}.`;short=`Next${where}: feet ${nf!==null?nf:(dir>0?'+':'−')+mag}, mark ${nm!==null?nm:(dir>0?'+':'−')+1}`}
+    else{text=`${HITL[last.h]}${where}. One shot isn’t a pattern yet, so repeat it. If it goes ${dir>0?'high':'light'} again${where}, ${move}.`;short=`Next${where}: repeat, watch for ${dir>0?'high':'light'}`}
+  }
+  if(pair){
+    const recent=l=>{const a=[];for(let gg=0;gg<=g;gg++)shotsOf(b,gg).forEach(x=>{if(+x.lane===+l)a.push(x)});return a.slice(-2)};
+    const hi=a=>a.length===2&&a.every(x=>x.h==='high'||x.h==='brooklyn');
+    if(hi(recent(pair[0]))&&hi(recent(pair[1])))text+=' Both lanes are going high now, which usually means the oil is breaking down. Moving in on both lanes is the usual fix.';
+  }
+  return {lane,short,text,apply};
+}
+function shotBlock(b){
+  const t=tipFor(b.id),pair=lanePair(),f=readFrame(b.id,lg),lane=pair?laneFor(pair,lg,f):null;
+  const def=lineFor(b.id,lg,lane).mark,x=xDraft[b.id]!==undefined?xDraft[b.id]:(def!==null?def:10);
+  const reads=shotsOf(b.id,lg);
+  return `<details class="shot" data-shot="${b.id}" ${openNotes['s'+b.id]?'open':''}><summary>Read my shot${t.short?`<span class="nsum tipsum">${esc(t.short)}</span>`:''}</summary>
+  <div class="tipbox"><p style="margin:0"><b>Tip</b> ${esc(t.text)}</p>${t.apply?`<button class="btn" style="margin-top:8px;padding:8px 14px" data-apply="${b.id}" data-al="${t.apply.lane||''}" data-af="${t.apply.foot}" data-am="${t.apply.mark}">Use this line: feet ${t.apply.foot}, mark ${t.apply.mark}</button>`:''}</div>
+  <p class="readhd">Frame ${f+1}${lane?`, lane ${lane}`:''}: where did you cross the arrows?</p>
+  <div class="stepper"><button data-sx="-1" data-b="${b.id}" aria-label="One board out">−</button><span><b>${x}</b><small>${def!==null?(x===def?'on your mark':`${Math.abs(x-def)} ${x>def?'in':'out'} of ${def}`):'board'}</small></span><button data-sx="1" data-b="${b.id}" aria-label="One board in">+</button></div>
+  <p class="readhd">How did it hit?</p>
+  <div class="hits">${HITS.map(h=>`<button class="hitb ${h.k}" data-hit="${h.k}" data-b="${b.id}">${h.label}</button>`).join('')}</div>
+  <div class="row" style="justify-content:space-between;margin-top:8px"><span class="muted" style="font-size:.82rem">${reads.length?`${reads.length} read${reads.length>1?'s':''} this game: ${reads.slice(-4).map(r=>HITL[r.h]).join(', ')}`:''}</span>${reads.length?`<button class="linkbtn" data-unshot="${b.id}">Undo last read</button>`:''}</div>
+  <p class="hint" style="margin:6px 0 0">In means higher board numbers, toward the middle. Out means toward your gutter. Tips are for the lane you bowl on next.</p></details>`;
+}
+
 // ---- Stats ----
 // Every rack (fresh set of pins) a bowler has faced, oldest first.
 function bowlerRacks(id){
@@ -679,6 +766,10 @@ function vStats(){
   h+=`<h2>Single-pin spares by pin</h2>${heatmap(s.perPin)}<p class="hint">Teal is 80% or better, gold is 50 to 79%, red is under 50%. Needs the pin deck.</p>`;
   const top=Object.entries(s.leaves).sort((a,b)=>b[1]-a[1]).slice(0,5);
   if(top.length)h+=`<h2>Most common leaves</h2><div class="tablewrap"><table><tbody>${top.map(([m,n])=>`<tr><td class="name">${esc(leaveLabel(+m))}${isSplit(+m)?' <span class="tag c">split</span>':''}</td><td>${n}×</td></tr>`).join('')}</tbody></table></div>`;
+  const sr={};const addR=(x)=>{const l=x.lane||'all';const o=sr[l]=sr[l]||{n:0};o.n++;o[x.h]=(o[x.h]||0)+1};
+  S.nights.forEach(n=>Object.entries(n.shots||{}).forEach(([k,a])=>{if(k.split(':')[0]===statsFor)a.forEach(addR)}));
+  if(S.live)Object.entries(S.live.shots||{}).forEach(([k,a])=>{if(k.split(':')[0]===statsFor)a.forEach(addR)});
+  if(Object.keys(sr).length)h+=`<h2>Shot reads</h2><div class="tablewrap"><table><thead><tr><th>Lane</th><th>Pocket</th><th>High</th><th>Light</th><th>Reads</th></tr></thead><tbody>${Object.entries(sr).map(([l,o])=>`<tr><td class="name">${l==='all'?'All':'Lane '+l}</td><td><b>${pct(o.pocket||0,o.n)}</b></td><td>${pct((o.high||0)+(o.brooklyn||0),o.n)}</td><td>${pct((o.light||0)+(o.wayLight||0),o.n)}</td><td>${o.n}</td></tr>`).join('')}</tbody></table></div>`;
   const lanes=Object.entries(s.byLane);
   if(lanes.length)h+=`<h2>By lane</h2><div class="tablewrap"><table><thead><tr><th>Lane</th><th>Strikes</th><th>Spares</th><th>Frames</th></tr></thead><tbody>${lanes.map(([l,v])=>`<tr><td class="name">Lane ${l}</td><td>${pct(v.st,v.fb)}</td><td>${pct(v.made,v.att)}</td><td>${v.fb}</td></tr>`).join('')}</tbody></table></div>`;
   h+=journal();
@@ -833,6 +924,7 @@ function card(b){
   const foot=[];
   if(amt('buyin')>0){const paidB=count('buyin');foot.push(paidB?`<span class="paidb">Bought in ${money(amt('buyin'))} ✓</span>`:`<button class="jb buy" data-add="buyin" data-b="${b.id}"><span class="jl">Buy-in</span><span class="ja">${money(amt('buyin'))}</span></button>`)}
   if(last)foot.push(`<button class="linkbtn" data-undojar="${last.id}">Undo ${esc(ruleOf(last.k,last).short)}</button>`);
+  h+=shotBlock(b);
   h+=notesBlock(b);
   if(foot.length)h+=`<div class="bfoot">${foot.join('')}</div>`;
   return h+'</section>';
@@ -1041,6 +1133,7 @@ function wire(){
     inp.onchange=()=>{const k=inp.dataset.nk,old=noteOf(k),d={lanes:Object.assign({},old.lanes||{})};
       all(`[data-nk="${k}"]`,x=>{if(x.dataset.nl){const l=x.dataset.nl;d.lanes[l]=Object.assign({},d.lanes[l]||{});d.lanes[l][x.dataset.nf]=x.value.trim()}else d[x.dataset.nf]=x.value.trim()});
       if(!root.querySelector(`[data-nk="${k}"][data-nf="stand"]`)){d.stand=old.stand;d.target=old.target;d.bp=old.bp}
+      d.adjAt=old.adjAt;
       if(!S.live.notes)S.live.notes={};S.live.notes[k]=d;quiet({action:'setNote',key:k,data:d},'Could not save that note.')};
     inp.onkeydown=e=>{if(e.key==='Enter')inp.blur()};
     inp.onblur=()=>setTimeout(()=>{if(!typing())render()},50);
@@ -1052,6 +1145,25 @@ function wire(){
     inp.onkeydown=e=>{if(e.key==='Enter')inp.blur()};
     inp.onblur=()=>setTimeout(()=>{if(!typing())render()},50);
   });
+  all('[data-shot]',d=>d.ontoggle=()=>{openNotes['s'+d.dataset.shot]=d.open});
+  all('[data-sx]',btn=>btn.onclick=()=>{const b=btn.dataset.b,pair=lanePair(),f=readFrame(b,lg),lane=pair?laneFor(pair,lg,f):null,def=lineFor(b,lg,lane).mark;
+    const cur=xDraft[b]!==undefined?xDraft[b]:(def!==null?def:10);xDraft[b]=Math.max(1,Math.min(39,cur+ +btn.dataset.sx));render()});
+  all('[data-hit]',btn=>btn.onclick=async()=>{
+    const b=btn.dataset.b,h=btn.dataset.hit,pair=lanePair(),f=readFrame(b,lg),lane=pair?laneFor(pair,lg,f):null,def=lineFor(b,lg,lane).mark;
+    const x=xDraft[b]!==undefined?xDraft[b]:(def!==null?def:10);
+    if(!S.live.shots)S.live.shots={};const k=b+':'+lg;S.live.shots[k]=(S.live.shots[k]||[]).concat([{f,x,h,lane:lane||'',at:Date.now()}]);
+    delete xDraft[b];render();toast(tipFor(b).text);
+    await quiet({action:'addShot',bowlerId:b,game:lg,f,x,h,lane:lane||''},'Could not save that read.');
+  });
+  all('[data-apply]',btn=>btn.onclick=()=>{
+    const b=btn.dataset.apply,l=btn.dataset.al,k=b+':'+lg,old=noteOf(k),d=Object.assign({},old,{lanes:Object.assign({},old.lanes||{})});
+    const now=Date.now();
+    if(l){d.lanes[l]=Object.assign({},d.lanes[l]||{},{foot:+btn.dataset.af,mark:+btn.dataset.am,adjAt:now})}else{d.stand=+btn.dataset.af;d.target=+btn.dataset.am;d.adjAt=now}
+    if(!S.live.notes)S.live.notes={};S.live.notes[k]=d;delete xDraft[b];render();
+    toast(`Line updated${l?` for lane ${l}`:''}: feet ${btn.dataset.af}, mark ${btn.dataset.am}`);
+    quiet({action:'setNote',key:k,data:d},'Could not save the new line.');
+  });
+  all('[data-unshot]',btn=>btn.onclick=()=>{const b=btn.dataset.unshot,k=b+':'+lg;if(S.live.shots&&S.live.shots[k])S.live.shots[k]=S.live.shots[k].slice(0,-1);render();quiet({action:'removeShot',bowlerId:b,game:lg},'Could not undo that read.')});
   all('[data-stat]',b=>b.onclick=()=>{statsFor=b.dataset.stat;render()});
   all('[data-add]',b=>b.onclick=()=>addJar(b.dataset.b,b.dataset.add));
   all('[data-undojar]',b=>b.onclick=()=>{const e=liveJar().find(x=>x.id===b.dataset.undojar);if(e)removeJar(e)});
