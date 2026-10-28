@@ -228,6 +228,12 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .amtin input{width:86px;text-align:right}
 .jarline{margin:6px 0 0;font-size:.9rem}
 .chips.wrap{flex-wrap:wrap;overflow:visible}
+.dup{color:var(--teal);font-weight:800;font-size:.85em}
+.ddown{color:var(--red);font-weight:800;font-size:.85em}
+.dn{color:var(--muted);font-weight:700;font-size:.85em}
+.dz{color:var(--muted);font-size:.85em}
+.dline{display:block;line-height:1.1}
+.avgchart{width:100%;max-width:420px;height:auto;display:block;margin:4px 0 10px;border:2px solid var(--line);border-radius:14px;background:var(--surface)}
 .avgline{display:block;font-family:Figtree,system-ui,sans-serif;font-size:.78rem;color:var(--muted);font-weight:600;letter-spacing:0;margin-top:2px}
 .hdtable th,.hdtable td{padding:9px 6px}
 .hdtable input.tin{width:64px;padding:6px 5px!important;text-align:right;-moz-appearance:textfield;appearance:textfield}
@@ -772,7 +778,7 @@ function vStats(){
   if(!statsFor||!S.bowlers.some(b=>b.id===statsFor))statsFor=S.bowlers[0].id;
   let h='<div class="chips" style="margin-top:4px">'+S.bowlers.map(b=>`<button class="chip" data-stat="${b.id}" aria-pressed="${b.id===statsFor}">${esc(b.name)}</button>`).join('')+'</div>';
   const rk=bowlerRacks(statsFor);
-  if(!rk.length)return h+'<div class="empty"><p><b>No frames yet.</b></p><p>Stats come from games scored frame by frame. On bowl night, turn on “Track scores and frames” and score a game by frames. Use the pin deck for split and pin-by-pin stats.</p></div>'+journal();
+  if(!rk.length)return h+avgHistory(statsFor)+'<div class="empty"><p><b>No frames yet.</b></p><p>Stats come from games scored frame by frame. On bowl night, turn on “Track scores and frames” and score a game by frames. Use the pin deck for split and pin-by-pin stats.</p></div>'+journal();
   const s=statsOf(rk),al=alertsOf(rk);
   h+=`<div class="stats stats4"><div><b>${pct(s.strikes,s.fb)}</b><span>Strikes</span></div><div><b>${pct(s.spares.made,s.spares.att)}</b><span>Spares</span></div><div><b>${pct(s.single.made,s.single.att)}</b><span>Single-pin</span></div><div><b>${pct(s.splits.made,s.splits.att)}</b><span>Splits</span></div></div>`;
   h+=`<h2>Trouble spots</h2>`+(al.length?`<div class="alerts">${al.map(a=>`<p class="alert">${esc(a.text)}</p>`).join('')}</div>`:'<p class="muted">Nothing worrying right now. Alerts show up when misses start repeating.</p>');
@@ -787,9 +793,26 @@ function vStats(){
   if(Object.keys(sr).length)h+=`<h2>Shot reads</h2><div class="tablewrap"><table><thead><tr><th>Lane</th><th>Pocket</th><th>High</th><th>Light</th><th>Reads</th></tr></thead><tbody>${Object.entries(sr).map(([l,o])=>`<tr><td class="name">${l==='all'?'All':'Lane '+l}</td><td><b>${pct(o.pocket||0,o.n)}</b></td><td>${pct((o.high||0)+(o.brooklyn||0),o.n)}</td><td>${pct((o.light||0)+(o.wayLight||0),o.n)}</td><td>${o.n}</td></tr>`).join('')}</tbody></table></div>`;
   const lanes=Object.entries(s.byLane);
   if(lanes.length)h+=`<h2>By lane</h2><div class="tablewrap"><table><thead><tr><th>Lane</th><th>Strikes</th><th>Spares</th><th>Frames</th></tr></thead><tbody>${lanes.map(([l,v])=>`<tr><td class="name">Lane ${l}</td><td>${pct(v.st,v.fb)}</td><td>${pct(v.made,v.att)}</td><td>${v.fb}</td></tr>`).join('')}</tbody></table></div>`;
+  h+=avgHistory(statsFor);
   h+=journal();
   if(!s.deckRacks)h+='<p class="hint">Tip: score with the pin deck to unlock split stats, the pin heatmap and leave tracking.</p>';
   return h;
+}
+function avgHistory(id){
+  const t=timeline(id);
+  if(!t.length)return `<h2>Average &amp; handicap</h2><p class="muted">Add this bowler’s league sheet numbers on the Team tab to start tracking week by week.</p>`;
+  let chart='';
+  if(t.length>1){
+    const W=320,Hh=110,pad=22,av=t.map(p=>p.avg),lo=Math.min(...av)-3,hi=Math.max(...av)+3;
+    const X=i=>pad+i*(W-pad*2)/(t.length-1),Y=v=>Hh-14-(v-lo)/(hi-lo||1)*(Hh-30);
+    chart=`<svg class="avgchart" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Average by week, from ${av[0]} to ${av[av.length-1]}">
+    <path d="M${t.map((p,i)=>X(i)+' '+Y(p.avg)).join(' L')}" fill="none" stroke="var(--teal)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    ${t.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p.avg)}" r="${i===t.length-1?5:3.5}" fill="${p.kind==='sheet'?'var(--gold)':'var(--teal)'}"/>`).join('')}
+    <text x="${X(0)}" y="${Y(av[0])-9}" text-anchor="start" font-size="11" fill="var(--muted)">${av[0]}</text>
+    <text x="${X(t.length-1)}" y="${Y(av[av.length-1])-9}" text-anchor="end" font-size="12" font-weight="800" fill="var(--ink)">${av[av.length-1]}</text></svg>`;
+  }
+  const rows=t.slice().reverse().map(p=>`<tr><td class="name">${esc(fmtDate(p.date).replace(/, \d{4}$/,''))}${p.kind==='sheet'?' <span class="tag h">sheet</span>':''}</td><td>${p.kind==='night'?p.series+(p.gamesNight<S.games?` <small class="muted">(${p.gamesNight}g)</small>`:''):'–'}</td><td><b>${p.avg}</b> ${arrow(p.dAvg,true)}</td><td><b>${p.hdcp}</b> ${arrow(p.dHdcp)}</td><td>${p.games}</td></tr>`).join('');
+  return `<h2>Average &amp; handicap</h2>${chart}<div class="tablewrap"><table><thead><tr><th>Week</th><th>Series</th><th>Avg</th><th>HDCP</th><th>Games</th></tr></thead><tbody>${rows}</tbody></table></div><p class="hint">Gold dots are league-sheet checkpoints. Each night after a sheet adds on top.</p>`;
 }
 function journal(){
   let h='';
@@ -820,6 +843,24 @@ function avgOf(id,before){
   });
   return {avg:games?Math.floor(pins/games):null,pins,games};
 }
+// Week-by-week average & handicap. League-sheet checkpoints set the totals; each night after adds on top.
+function timeline(id){
+  const h=H();let snaps=(S.hdcpHistory||[]).slice();
+  if(!snaps.length&&h.asOf){const b=S.bowlers.find(x=>x.id===id);if(b&&b.sheetGames)snaps=[{asOf:h.asOf,b:{[id]:[+b.sheetPins||0,+b.sheetGames]}}]}
+  const ev=snaps.map(x=>({t:'s',date:x.asOf,ord:1,x})).concat(S.nights.map(n=>({t:'n',date:n.date,ord:0,created:n.created,n})));
+  ev.sort((a,b)=>a.date.localeCompare(b.date)||a.ord-b.ord||(a.created||0)-(b.created||0));
+  const pts=[];let pins=null,games=0;
+  ev.forEach(e=>{
+    if(e.t==='s'){const v=e.x.b[id];if(!v)return;const changed=pins!==v[0]||games!==v[1];pins=v[0];games=v[1];if(changed||!pts.length)pts.push({date:e.date,kind:'sheet',games,pins});return}
+    if(pins===null)return;
+    const a=e.n.scores&&e.n.scores[id];if(!a)return;let s=0,g=0;a.forEach(v=>{if(typeof v==='number'){s+=v;g++}});if(!g)return;
+    pins+=s;games+=g;pts.push({date:e.date,kind:'night',series:s,gamesNight:g,games,pins});
+  });
+  pts.forEach((p,i)=>{p.avg=Math.floor(p.pins/p.games);p.hdcp=hdcpOf(p.avg);const q=pts[i-1];p.dAvg=q?p.avg-q.avg:null;p.dHdcp=q?p.hdcp-q.hdcp:null});
+  return pts;
+}
+const lastChange=id=>{const t=timeline(id);return t.length>1?t[t.length-1]:null};
+const arrow=(d,good)=>d===null||d===undefined?'':d===0?'<span class="dz">±0</span>':`<span class="${good===undefined?'dn':(d>0)===good?'dup':'ddown'}">${d>0?'▲':'▼'}${Math.abs(d)}</span>`;
 const hdcpOf=avg=>{if(avg===null||avg===undefined)return null;const h=H();return Math.max(0,Math.floor((h.basis-avg)*h.pct/100))};
 const hdNow=id=>hdcpOf(avgOf(id).avg);
 function parseSheet(text){
@@ -835,7 +876,7 @@ function matchBowler(name){
 }
 function hdcpSection(){
   const h=H();
-  const rows=S.bowlers.map(b=>{const a=avgOf(b.id);return `<tr><td class="name">${esc(b.name)}</td><td><input type="number" inputmode="numeric" min="0" class="tin" data-bp="${b.id}" value="${b.sheetPins||''}" placeholder="0" aria-label="${esc(b.name)} sheet pins"></td><td><input type="number" inputmode="numeric" min="0" class="tin sm" data-bg="${b.id}" value="${b.sheetGames||''}" placeholder="0" aria-label="${esc(b.name)} sheet games"></td><td>${a.avg===null?'–':a.avg}</td><td><b>${a.avg===null?'–':hdcpOf(a.avg)}</b></td></tr>`}).join('');
+  const rows=S.bowlers.map(b=>{const a=avgOf(b.id);return `<tr><td class="name">${esc(b.name)}</td><td><input type="number" inputmode="numeric" min="0" class="tin" data-bp="${b.id}" value="${b.sheetPins||''}" placeholder="0" aria-label="${esc(b.name)} sheet pins"></td><td><input type="number" inputmode="numeric" min="0" class="tin sm" data-bg="${b.id}" value="${b.sheetGames||''}" placeholder="0" aria-label="${esc(b.name)} sheet games"></td><td>${a.avg===null?'–':a.avg}${(()=>{const lc=lastChange(b.id);return lc?`<small class="dline">${arrow(lc.dAvg,true)}</small>`:''})()}</td><td><b>${a.avg===null?'–':hdcpOf(a.avg)}</b>${(()=>{const lc=lastChange(b.id);return lc?`<small class="dline">${arrow(lc.dHdcp)}</small>`:''})()}</td></tr>`}).join('');
   return `<h2>Averages &amp; handicap</h2>
   <p class="hint" style="margin-top:0">Enter each bowler’s total pins and games from your league sheet. Nights you log here after the sheet date are added on top.</p>
   <div class="ngrid3" style="max-width:420px"><label class="field">Handicap %<input type="number" id="hPct" min="0" max="100" value="${h.pct}"></label><label class="field">Of basis<input type="number" id="hBasis" min="100" max="300" value="${h.basis}"></label><label class="field">Sheet date<input type="date" id="hAsOf" value="${esc(h.asOf)}"></label></div>
@@ -966,7 +1007,7 @@ function card(b){
          :`<input type="number" inputmode="numeric" min="0" max="300" class="gin" data-tb="${b.id}" data-tg="${g}" value="${x?x.v:''}" placeholder="–" aria-label="${esc(b.name)} game ${g+1} score">`)+'</div>';
   }
   scores+=`<div class="gs ser"><span class="gl">Series</span><b>${series||'–'}</b></div></div>`;
-  let h=`<section class="bcard${padFor===b.id?' open':''}" id="card-${b.id}"><div class="bhead"><h3>${esc(b.name)}${(()=>{const a=avgOf(b.id).avg;return a===null?'':`<small class="avgline">Avg ${a}, HDCP ${hdcpOf(a)}</small>`})()}</h3><span class="bjar ${J.net>0?'pos':J.net<0?'neg':''}">${J.paid||J.won?smoney(J.net):'$0.00'}</span></div>`;
+  let h=`<section class="bcard${padFor===b.id?' open':''}" id="card-${b.id}"><div class="bhead"><h3>${esc(b.name)}${(()=>{const a=avgOf(b.id).avg;const lc=lastChange(b.id);return a===null?'':`<small class="avgline">Avg ${a}${lc?' '+arrow(lc.dAvg,true):''}, HDCP ${hdcpOf(a)}${lc?' '+arrow(lc.dHdcp):''}</small>`})()}</h3><span class="bjar ${J.net>0?'pos':J.net<0?'neg':''}">${J.paid||J.won?smoney(J.net):'$0.00'}</span></div>`;
   const al=alertsOf(bowlerRacks(b.id))[0];
   if(al)h+=`<p class="heads"><b>Heads up</b> ${esc(al.text)}</p>`;
   h+=`<div class="jrow"><span class="jt">Fines</span><div class="jbs">${activeF.map(chip).join('')||'<span class="muted">All fines are off</span>'}</div></div>`;
@@ -1061,7 +1102,7 @@ function vStandings(){
   const pins=tg.reduce((a,b)=>a+b,0);
   let h=`<h2 style="margin-top:4px">Team season</h2><div class="stats"><div><b>${pins.toLocaleString()}</b><span>Total pins</span></div><div><b>${tg.length?Math.round(pins/tg.length):'–'}</b><span>Avg team game</span></div><div><b>${tg.length?Math.max(...tg):'–'}</b><span>Best team game</span></div></div>`;
   h+=`<h2>Chump & Hero standings</h2><div class="tablewrap"><table><thead><tr><th>Bowler</th><th>Hero</th><th>Chump</th><th>Net</th><th>Avg</th><th>HDCP</th><th>High</th></tr></thead><tbody>`;
-  rows.forEach(r=>{const net=r.h-r.c;h+=`<tr><td class="name">${esc(r.name)}</td><td><span class="pill h">${r.h}</span></td><td><span class="pill c">${r.c}</span></td><td class="net ${net>0?'pos':net<0?'neg':''}">${net>0?'+':''}${net}</td><td>${(()=>{const a=avgOf(r.id).avg;return a===null?'—':a})()}</td><td>${(()=>{const x=hdNow(r.id);return x===null?'—':x})()}</td><td>${r.high||'—'}</td></tr>`});
+  rows.forEach(r=>{const net=r.h-r.c;h+=`<tr><td class="name">${esc(r.name)}</td><td><span class="pill h">${r.h}</span></td><td><span class="pill c">${r.c}</span></td><td class="net ${net>0?'pos':net<0?'neg':''}">${net>0?'+':''}${net}</td><td>${(()=>{const a=avgOf(r.id).avg,lc=lastChange(r.id);return a===null?'—':a+(lc?` <small>${arrow(lc.dAvg,true)}</small>`:'')})()}</td><td>${(()=>{const x=hdNow(r.id),lc=lastChange(r.id);return x===null?'—':x+(lc?` <small>${arrow(lc.dHdcp)}</small>`:'')})()}</td><td>${r.high||'—'}</td></tr>`});
   return h+`</tbody></table></div><p class="hint">Hero is the top score of each game, Chump is the bottom. Net is Hero wins minus Chump losses.${H().useForCH?' Chump &amp; Hero use handicap scores.':''} Avg and HDCP include your league sheet numbers. ${S.nights.length} night${S.nights.length===1?'':'s'} logged.</p>`;
 }
 function vJar(){
