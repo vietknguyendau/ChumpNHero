@@ -8,7 +8,7 @@ const redis = new Redis({
 
 const K = {
   bowlers: "ch:bowlers", nights: "ch:nights", settings: "ch:settings",
-  live: "ch:live", liveMeta: "ch:livemeta", liveTot: "ch:livetot", liveJar: "ch:livejar",
+  live: "ch:live", liveMeta: "ch:livemeta", liveTot: "ch:livetot", liveJar: "ch:livejar", liveNotes: "ch:livenotes",
 };
 const DEFAULTS = { team: "Our Team", games: 3 };
 // Chump & Hero Jar amounts in dollars (editable in the app).
@@ -45,7 +45,23 @@ function normalize(raw) {
   return s;
 }
 // Live games are stored as {r: rolls, s: {rollIndex: "s" | "b"}} (s = split, b = 7-10 / Greek Church).
-const normLive = (x) => (Array.isArray(x) ? { r: x, s: {} } : { r: x.r || [], s: x.s || {} });
+const normLive = (x) => (Array.isArray(x) ? { r: x, s: {}, L: [] } : { r: x.r || [], s: x.s || {}, L: x.L || [] });
+// Pin leaves must agree with the rolls: right number of pins, and only pins that were still up.
+function cleanLeaves(rolls, L) {
+  if (!Array.isArray(L)) return [];
+  const out = [];
+  for (let i = 0; i < rolls.length; i++) {
+    const m = L[i];
+    if (!Number.isInteger(m) || m < 0 || m > ALL_PINS) { out[i] = null; continue; }
+    const st = nextBall(rolls.slice(0, i)).max;
+    if (popcount(m) !== st - rolls[i]) { out[i] = null; continue; }
+    if (st < 10 && Number.isInteger(out[i - 1]) && (m & ~out[i - 1])) { out[i] = null; continue; }
+    out[i] = m;
+  }
+  return out;
+}
+const num = (v, lo, hi) => (v === "" || v === null || v === undefined || !(+v >= lo && +v <= hi) ? "" : Math.round(+v * 2) / 2);
+const txt = (v, n) => String(v || "").slice(0, n);
 
 const parse = (v) => (typeof v === "string" ? JSON.parse(v) : v);
 const values = (h) => (h ? Object.values(h).map(parse) : []);
@@ -94,6 +110,50 @@ function scoreGame(r){
   return {frames:fr,total:cum,complete,thru:fr.filter(f=>f.c!==null).length};
 }
 
+// ---- Pin deck ----
+// A leave is a 10-bit mask of pins still standing: bit (p-1) set = pin p standing.
+const ALL_PINS=1023;
+const PIN_ROWS=[[7,8,9,10],[4,5,6],[2,3],[1]];
+const ADJ={1:[2,3],2:[1,3,4,5],3:[1,2,5,6],4:[2,5,7,8],5:[2,3,4,6,8,9],6:[3,5,9,10],7:[4,8],8:[4,5,7,9],9:[5,6,8,10],10:[6,9]};
+const bit=p=>1<<(p-1);
+const pinsOf=m=>{const o=[];for(let p=1;p<=10;p++)if(m&bit(p))o.push(p);return o};
+const maskOf=ps=>ps.reduce((m,p)=>m|bit(p),0);
+const popcount=m=>pinsOf(m).length;
+// Split: headpin down, 2+ pins standing, and the standing pins aren't all touching.
+function isSplit(m){
+  if(m&bit(1))return false;
+  const ps=pinsOf(m);if(ps.length<2)return false;
+  const seen=new Set([ps[0]]),stack=[ps[0]];
+  while(stack.length){const p=stack.pop();ADJ[p].forEach(q=>{if((m&bit(q))&&!seen.has(q)){seen.add(q);stack.push(q)}})}
+  return seen.size<ps.length;
+}
+const BIG={'7-10':maskOf([7,10]),'Greek Church':maskOf([4,6,7,9,10]),'Greek Church ':maskOf([4,6,7,8,10]),'4-6-7-10':maskOf([4,6,7,10])};
+function bigKind(m){for(const k in BIG)if(BIG[k]===m)return k.trim();return null}
+const leaveName=m=>m===0?'clean':pinsOf(m).join('-');
+// Rolls of the 10th frame.
+function tenthRolls(r){let i=0;for(let f=0;f<9&&i<r.length;f++)i+=r[i]===10?1:2;return r.slice(i)}
+function clean10(r){const t=tenthRolls(r);if(t.length<2)return false;if(t[0]===10)return t[1]===10?t.length===3:t.length===3&&t[1]+t[2]===10;return t[0]+t[1]===10}
+// Jar events the app can detect from the rolls (and pin leaves, when the pin deck was used).
+function autoJar(r,L){
+  L=L||[];const ev=[];let streak=0;
+  for(let i=0;i<r.length;i++){
+    const st=nextBall(r.slice(0,i)).max,first=st===10;
+    if(first){
+      if(r[i]===0)ev.push({k:'gutter1',i});
+      if(r[i]===10){streak++;if(streak===4)ev.push({k:'fourBagger',i})}else streak=0;
+      const m=L[i];if(typeof m==='number'&&r[i]<10){const b=bigKind(m);if(b==='7-10'||b==='Greek Church')ev.push({k:'splitCaused',i})}
+    }else{
+      if(st===1&&r[i]===0)ev.push({k:'openSingle',i});
+      else if(r[i]===0)ev.push({k:'gutter2',i});
+      const m=L[i-1];if(typeof m==='number'&&isSplit(m)&&r[i]===st)ev.push({k:bigKind(m)?'bigSplitConv':'splitConv',i});
+    }
+  }
+  if(nextBall(r).done&&clean10(r))ev.push({k:'clutch10',i:r.length-1});
+  return ev;
+}
+// Which frame each roll belongs to.
+function frameOfRolls(r){const out=[];let i=0;for(let f=0;f<9&&i<r.length;f++){if(r[i]===10){out[i]=f;i++}else{out[i]=f;if(i+1<r.length)out[i+1]=f;i+=2}}for(;i<r.length;i++)out[i]=9;return out}
+
 function legal(rolls) {
   if (!Array.isArray(rolls) || rolls.length > 21) return false;
   for (let i = 0; i < rolls.length; i++) {
@@ -108,7 +168,7 @@ async function getSettings() {
 }
 
 async function readState() {
-  const [bowlers, nights, settings, live, liveMeta, liveTot, liveJar] = await Promise.all([
+  const [bowlers, nights, settings, live, liveMeta, liveTot, liveJar, liveNotes] = await Promise.all([
     redis.hgetall(K.bowlers),
     redis.hgetall(K.nights),
     redis.get(K.settings),
@@ -116,6 +176,7 @@ async function readState() {
     redis.get(K.liveMeta),
     redis.hgetall(K.liveTot),
     redis.hgetall(K.liveJar),
+    redis.hgetall(K.liveNotes),
   ]);
   const meta = parse(liveMeta);
   const rolls = {};
@@ -129,6 +190,7 @@ async function readState() {
       ...meta, rolls,
       totals: Object.fromEntries(Object.entries(liveTot || {}).map(([k, v]) => [k, +parse(v)])),
       jar: values(liveJar).sort((a, b) => a.at - b.at),
+      notes: Object.fromEntries(Object.entries(liveNotes || {}).map(([k, v]) => [k, parse(v)])),
     } : null,
   };
 }
@@ -190,7 +252,7 @@ export default async function handler(req, res) {
       const date = String(body.date || "");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return bad(res, "Bad date");
       if (await redis.get(K.liveMeta)) return bad(res, "A night is already in progress");
-      await redis.del(K.live); await redis.del(K.liveTot); await redis.del(K.liveJar);
+      for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes]) await redis.del(k);
       await redis.set(K.liveMeta, JSON.stringify({ date, started: Date.now() }));
     } else if (action === "setRolls") {
       if (!(await redis.get(K.liveMeta))) return bad(res, "No night in progress. Start one first.");
@@ -208,7 +270,8 @@ export default async function handler(req, res) {
         }
       }
       const key = id + ":" + game;
-      if (rolls.length) await redis.hset(K.live, { [key]: JSON.stringify({ r: rolls, s: splits }) });
+      const L = cleanLeaves(rolls, body.leaves);
+      if (rolls.length) await redis.hset(K.live, { [key]: JSON.stringify({ r: rolls, s: splits, L }) });
       else await redis.hdel(K.live, key);
     } else if (action === "setTotal") {
       if (!(await redis.get(K.liveMeta))) return bad(res, "No night in progress. Start one first.");
@@ -230,6 +293,20 @@ export default async function handler(req, res) {
       const e = { id: uid(), b, k, g: Math.max(0, Math.min(4, Math.round(+body.game || 0))), amt, at: Date.now() };
       if (custom) { e.label = custom.label; e.fine = custom.fine; } // kept even if the button is deleted later
       await redis.hset(K.liveJar, { [e.id]: JSON.stringify(e) });
+    } else if (action === "setNote") {
+      if (!(await redis.get(K.liveMeta))) return bad(res, "No night in progress. Start one first.");
+      const d = body.data || {};
+      if (body.key === "lanes") {
+        const pair = [num((d.pair || [])[0], 1, 200), num((d.pair || [])[1], 1, 200)];
+        const notes = {};
+        for (const [k, v] of Object.entries(d.notes || {}).slice(0, 4)) if (num(k, 1, 200) !== "") notes[+k] = txt(v, 200);
+        await redis.hset(K.liveNotes, { lanes: JSON.stringify({ pair, notes }) });
+      } else {
+        const [id, g] = String(body.key || "").split(":");
+        if (!id || !(+g >= 0 && +g < 5)) return bad(res, "Bad note");
+        const n = { stand: num(d.stand, 1, 39), target: num(d.target, 1, 39), bp: num(d.bp, 1, 39), ball: txt(d.ball, 30), note: txt(d.note, 200) };
+        await redis.hset(K.liveNotes, { [id.slice(0, 20) + ":" + Math.round(+g)]: JSON.stringify(n) });
+      }
     } else if (action === "removeJar") {
       await redis.hdel(K.liveJar, String(body.id || ""));
     } else if (action === "finishNight") {
@@ -237,17 +314,21 @@ export default async function handler(req, res) {
       if (!meta) return bad(res, "No night in progress");
       const { games, jar } = await getSettings();
       const live = (await redis.hgetall(K.live)) || {};
+      const await_nights = await redis.hgetall(K.nights);
+      const notesRaw = (await redis.hgetall(K.liveNotes)) || {};
       const liveTot = (await redis.hgetall(K.liveTot)) || {};
       const jarEvents = values(await redis.hgetall(K.liveJar));
-      const scores = {}, rolls = {}, splits = {};
+      const scores = {}, rolls = {}, splits = {}, leaves = {};
       for (const [k, v] of Object.entries(live)) {
         const [id, g] = k.split(":");
         const gi = +g;
         if (gi >= games) continue;
         const L = normLive(parse(v));
         if (!scores[id]) {
-          scores[id] = Array(games).fill(null); rolls[id] = Array(games).fill(null); splits[id] = Array(games).fill(null);
+          scores[id] = Array(games).fill(null); rolls[id] = Array(games).fill(null);
+          splits[id] = Array(games).fill(null); leaves[id] = Array(games).fill(null);
         }
+        leaves[id][gi] = L.L;
         const s = scoreGame(L.r);
         scores[id][gi] = s.complete ? s.total : null;
         rolls[id][gi] = L.r;
@@ -257,11 +338,31 @@ export default async function handler(req, res) {
       for (const [k, v] of Object.entries(liveTot)) {
         const [id, g] = k.split(":"), gi = +g;
         if (gi >= games) continue;
-        if (!scores[id]) { scores[id] = Array(games).fill(null); rolls[id] = Array(games).fill(null); splits[id] = Array(games).fill(null); }
+        if (!scores[id]) { scores[id] = Array(games).fill(null); rolls[id] = Array(games).fill(null); splits[id] = Array(games).fill(null); leaves[id] = Array(games).fill(null); }
         if (!rolls[id][gi] && scores[id][gi] === null) scores[id][gi] = +parse(v);
       }
       const anyDone = Object.values(scores).some((a) => a.some((v) => v !== null));
       if (!anyDone && !jarEvents.length) return bad(res, "Enter at least one score before saving the night");
+      // Fines and bounties detected from the frames.
+      const settingsNow = await getSettings();
+      const isIn = (e) => (e.fine !== undefined ? e.fine : !["splitConv", "bigSplitConv", "fourBagger", "clutch10"].includes(e.k));
+      let potBase = null;
+      for (const id of Object.keys(rolls)) {
+        rolls[id].forEach((r, g) => {
+          if (!r) return;
+          autoJar(r, leaves[id][g]).forEach((a) => {
+            let amt = jar[a.k] || 0;
+            if (a.k === "bigSplitConv" && settingsNow.bigSplitPot) {
+              if (potBase === null) {
+                const prior = values(await_nights).flatMap((n) => n.jarEvents || []);
+                potBase = prior.concat(jarEvents).reduce((s2, e) => s2 + (isIn(e) ? e.amt : -e.amt), 0);
+              }
+              amt = Math.max(0, potBase); potBase -= amt;
+            }
+            if (amt > 0) jarEvents.push({ id: uid(), b: id, k: a.k, g, amt, at: Date.now(), auto: true });
+          });
+        });
+      }
       // Chump of each game pays the chump fine.
       if (jar.chump > 0) {
         for (let g = 0; g < games; g++) {
@@ -273,11 +374,13 @@ export default async function handler(req, res) {
             jarEvents.push({ id: uid(), b, k: "chump", g, amt: jar.chump, at: Date.now() }));
         }
       }
-      const n = { id: uid(), date: meta.date, scores, rolls, splits, jarEvents, created: Date.now() };
+      const notes = {};
+      for (const [k, v] of Object.entries(notesRaw)) notes[k] = parse(v);
+      const n = { id: uid(), date: meta.date, scores, rolls, splits, leaves, jarEvents, notes, created: Date.now() };
       await redis.hset(K.nights, { [n.id]: JSON.stringify(n) });
-      for (const k of [K.live, K.liveTot, K.liveJar, K.liveMeta]) await redis.del(k);
+      for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes, K.liveMeta]) await redis.del(k);
     } else if (action === "cancelNight") {
-      for (const k of [K.live, K.liveTot, K.liveJar, K.liveMeta]) await redis.del(k);
+      for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes, K.liveMeta]) await redis.del(k);
     } else {
       return bad(res, "Unknown action");
     }
