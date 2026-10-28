@@ -32,6 +32,14 @@ function cleanCustom(list) {
     return { k, label, fine: c ? c.fine !== false : true, amt };
   }).filter((c) => c.label);
 }
+// League handicap: pct% of (basis - average), whole pins. Defaults match the league sheet (90% of 200).
+function cleanHdcp(h) {
+  h = h || {};
+  const n = (v, lo, hi, d) => (+v >= lo && +v <= hi ? Math.round(+v) : d);
+  return { basis: n(h.basis, 100, 300, 200), pct: n(h.pct, 0, 100, 90),
+    asOf: /^\d{4}-\d{2}-\d{2}$/.test(h.asOf || "") ? h.asOf : "", useForCH: Boolean(h.useForCH) };
+}
+const intIn = (v, hi) => (+v >= 0 && +v <= hi ? Math.round(+v) : 0);
 function normalize(raw) {
   raw = raw || {};
   const s = { ...DEFAULTS, ...raw };
@@ -41,6 +49,7 @@ function normalize(raw) {
   s.jar = jar;
   s.bigSplitPot = Boolean(raw.bigSplitPot);
   s.customJar = cleanCustom(raw.customJar);
+  s.hdcp = cleanHdcp(raw.hdcp);
   delete s.fine;
   return s;
 }
@@ -216,8 +225,19 @@ export default async function handler(req, res) {
     if (action === "addBowler") {
       const name = String(body.name || "").trim().slice(0, 30);
       if (!name) return bad(res, "Name is required");
-      const b = { id: uid(), name, created: Date.now() };
+      const b = { id: uid(), name, created: Date.now(), sheetPins: intIn(body.sheetPins, 100000), sheetGames: intIn(body.sheetGames, 1000) };
       await redis.hset(K.bowlers, { [b.id]: JSON.stringify(b) });
+    } else if (action === "setBases") {
+      // Pins and games from the league sheet, as of a date. Nights logged after that date add on top.
+      const all = (await redis.hgetall(K.bowlers)) || {};
+      const upd = {};
+      for (const e of (Array.isArray(body.entries) ? body.entries : []).slice(0, 50)) {
+        const cur = all[e.id] ? parse(all[e.id]) : null;
+        if (!cur) continue;
+        upd[e.id] = JSON.stringify({ ...cur, sheetPins: intIn(e.pins, 100000), sheetGames: intIn(e.games, 1000) });
+      }
+      if (Object.keys(upd).length) await redis.hset(K.bowlers, upd);
+      if (body.hdcp) { const cur = await getSettings(); cur.hdcp = cleanHdcp({ ...cur.hdcp, ...body.hdcp }); await redis.set(K.settings, JSON.stringify(cur)); }
     } else if (action === "removeBowler") {
       await redis.hdel(K.bowlers, String(body.id));
     } else if (action === "addNight") {
@@ -240,6 +260,7 @@ export default async function handler(req, res) {
       const cur = await getSettings();
       if (body.team !== undefined) cur.team = String(body.team).trim().slice(0, 40) || cur.team;
       if (body.games !== undefined) cur.games = Math.max(1, Math.min(5, Math.round(+body.games || 3)));
+      if (body.hdcp && typeof body.hdcp === "object") cur.hdcp = cleanHdcp({ ...cur.hdcp, ...body.hdcp });
       if (Array.isArray(body.customJar)) cur.customJar = cleanCustom(body.customJar);
       if (body.bigSplitPot !== undefined) cur.bigSplitPot = Boolean(body.bigSplitPot);
       if (body.jar && typeof body.jar === "object") {
@@ -401,12 +422,23 @@ export default async function handler(req, res) {
       }
       // Chump of each game pays the chump fine.
       if (jar.chump > 0) {
+        // With "use handicap for Chump & Hero", compare score + handicap (handicap from the entering average).
+        const hd = settingsNow.hdcp, bowlersAll = values(await redis.hgetall(K.bowlers)), nightsAll = values(await_nights);
+        const hdcpFor = (id) => {
+          if (!hd.useForCH) return 0;
+          const b = bowlersAll.find((x) => x.id === id) || {};
+          let p = +b.sheetPins || 0, gm = +b.sheetGames || 0;
+          nightsAll.forEach((n) => { if (hd.asOf && n.date <= hd.asOf) return; ((n.scores && n.scores[id]) || []).forEach((v) => { if (typeof v === "number") { p += v; gm++; } }); });
+          return gm ? Math.max(0, Math.floor(((hd.basis - Math.floor(p / gm)) * hd.pct) / 100)) : 0;
+        };
+        const adj = {};
+        for (const id of Object.keys(scores)) adj[id] = hdcpFor(id);
         for (let g = 0; g < games; g++) {
-          const e = Object.entries(scores).filter(([, a]) => typeof a[g] === "number");
+          const e = Object.entries(scores).filter(([, a]) => typeof a[g] === "number").map(([b, a]) => [b, a[g] + adj[b]]);
           if (e.length < 2) continue;
-          const lo = Math.min(...e.map(([, a]) => a[g])), hi = Math.max(...e.map(([, a]) => a[g]));
+          const lo = Math.min(...e.map(([, v]) => v)), hi = Math.max(...e.map(([, v]) => v));
           if (lo === hi) continue;
-          e.filter(([, a]) => a[g] === lo).forEach(([b]) =>
+          e.filter(([, v]) => v === lo).forEach(([b]) =>
             jarEvents.push({ id: uid(), b, k: "chump", g, amt: jar.chump, at: Date.now() }));
         }
       }
