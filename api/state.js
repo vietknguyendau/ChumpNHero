@@ -8,7 +8,7 @@ const redis = new Redis({
 
 const K = {
   bowlers: "ch:bowlers", nights: "ch:nights", settings: "ch:settings",
-  live: "ch:live", liveMeta: "ch:livemeta", liveTot: "ch:livetot", liveJar: "ch:livejar", liveNotes: "ch:livenotes",
+  live: "ch:live", liveMeta: "ch:livemeta", liveTot: "ch:livetot", liveJar: "ch:livejar", liveNotes: "ch:livenotes", liveShots: "ch:liveshots",
 };
 const DEFAULTS = { team: "Our Team", games: 3 };
 // Chump & Hero Jar amounts in dollars (editable in the app).
@@ -168,7 +168,7 @@ async function getSettings() {
 }
 
 async function readState() {
-  const [bowlers, nights, settings, live, liveMeta, liveTot, liveJar, liveNotes] = await Promise.all([
+  const [bowlers, nights, settings, live, liveMeta, liveTot, liveJar, liveNotes, liveShots] = await Promise.all([
     redis.hgetall(K.bowlers),
     redis.hgetall(K.nights),
     redis.get(K.settings),
@@ -177,6 +177,7 @@ async function readState() {
     redis.hgetall(K.liveTot),
     redis.hgetall(K.liveJar),
     redis.hgetall(K.liveNotes),
+    redis.hgetall(K.liveShots),
   ]);
   const meta = parse(liveMeta);
   const rolls = {};
@@ -191,6 +192,7 @@ async function readState() {
       totals: Object.fromEntries(Object.entries(liveTot || {}).map(([k, v]) => [k, +parse(v)])),
       jar: values(liveJar).sort((a, b) => a.at - b.at),
       notes: Object.fromEntries(Object.entries(liveNotes || {}).map(([k, v]) => [k, parse(v)])),
+      shots: Object.fromEntries(Object.entries(liveShots || {}).map(([k, v]) => [k, parse(v)])),
     } : null,
   };
 }
@@ -252,7 +254,7 @@ export default async function handler(req, res) {
       const date = String(body.date || "");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return bad(res, "Bad date");
       if (await redis.get(K.liveMeta)) return bad(res, "A night is already in progress");
-      for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes]) await redis.del(k);
+      for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes, K.liveShots]) await redis.del(k);
       const roster = values(await redis.hgetall(K.bowlers)).map((b) => b.id);
       const lineup = Array.isArray(body.lineup) ? roster.filter((id) => body.lineup.includes(id)) : roster;
       if (!lineup.length) return bad(res, "Pick at least one bowler for tonight");
@@ -303,6 +305,21 @@ export default async function handler(req, res) {
       const lineup = roster.filter((id) => Array.isArray(body.lineup) && body.lineup.includes(id));
       if (!lineup.length) return bad(res, "Keep at least one bowler in tonight's lineup");
       await redis.set(K.liveMeta, JSON.stringify({ ...meta, lineup }));
+    } else if (action === "addShot" || action === "removeShot") {
+      if (!(await redis.get(K.liveMeta))) return bad(res, "No night in progress. Start one first.");
+      const id = String(body.bowlerId || "").slice(0, 20), g = Math.round(+body.game);
+      if (!id || !(g >= 0 && g < 5)) return bad(res, "Bad bowler or game");
+      const key = id + ":" + g, list = parse(await redis.hget(K.liveShots, key)) || [];
+      if (action === "removeShot") list.pop();
+      else {
+        const HITS = ["brooklyn", "high", "pocket", "light", "wayLight"];
+        const x = num(body.x, 1, 39), f = Math.round(+body.f);
+        if (x === "" || !HITS.includes(body.h) || !(f >= 0 && f <= 9)) return bad(res, "Bad shot read");
+        list.push({ f, x, h: body.h, lane: num(body.lane, 1, 200), at: Date.now() });
+        if (list.length > 30) list.shift();
+      }
+      if (list.length) await redis.hset(K.liveShots, { [key]: JSON.stringify(list) });
+      else await redis.hdel(K.liveShots, key);
     } else if (action === "setNote") {
       if (!(await redis.get(K.liveMeta))) return bad(res, "No night in progress. Start one first.");
       const d = body.data || {};
@@ -314,11 +331,11 @@ export default async function handler(req, res) {
       } else {
         const [id, g] = String(body.key || "").split(":");
         if (!id || !(+g >= 0 && +g < 5)) return bad(res, "Bad note");
-        const n = { stand: num(d.stand, 1, 39), target: num(d.target, 1, 39), bp: num(d.bp, 1, 39), ball: txt(d.ball, 30), note: txt(d.note, 200), lanes: {} };
+        const n = { stand: num(d.stand, 1, 39), target: num(d.target, 1, 39), bp: num(d.bp, 1, 39), ball: txt(d.ball, 30), note: txt(d.note, 200), adjAt: +d.adjAt > 0 ? +d.adjAt : 0, lanes: {} };
         // This bowler's own line and notes for each lane: foot board, mark at the arrows, breakpoint, note.
         for (const [l, x] of Object.entries(d.lanes || {}).slice(0, 2)) {
           if (num(l, 1, 200) === "" || !x) continue;
-          n.lanes[+l] = { foot: num(x.foot, 1, 39), mark: num(x.mark, 1, 39), bp: num(x.bp, 1, 39), note: txt(x.note, 200) };
+          n.lanes[+l] = { foot: num(x.foot, 1, 39), mark: num(x.mark, 1, 39), bp: num(x.bp, 1, 39), note: txt(x.note, 200), adjAt: +x.adjAt > 0 ? +x.adjAt : 0 };
         }
         await redis.hset(K.liveNotes, { [id.slice(0, 20) + ":" + Math.round(+g)]: JSON.stringify(n) });
       }
@@ -331,6 +348,7 @@ export default async function handler(req, res) {
       const live = (await redis.hgetall(K.live)) || {};
       const await_nights = await redis.hgetall(K.nights);
       const notesRaw = (await redis.hgetall(K.liveNotes)) || {};
+      const shotsRaw = (await redis.hgetall(K.liveShots)) || {};
       const liveTot = (await redis.hgetall(K.liveTot)) || {};
       const jarEvents = values(await redis.hgetall(K.liveJar));
       const scores = {}, rolls = {}, splits = {}, leaves = {};
@@ -396,11 +414,13 @@ export default async function handler(req, res) {
       for (const [k, v] of Object.entries(notesRaw)) if (k === "lanes" || inLineup(k.split(":")[0])) notes[k] = parse(v);
       if (!Object.values(scores).some((x) => x.some((v) => v !== null)) && !jarEvents.length && Object.keys(notes).length === 0)
         return bad(res, "Nothing to save yet. Add a score, a jar item or a note first.");
-      const n = { id: uid(), date: meta.date, lineup: meta.lineup, scores, rolls, splits, leaves, jarEvents, notes, created: Date.now() };
+      const shots = {};
+      for (const [k, v] of Object.entries(shotsRaw)) if (inLineup(k.split(":")[0])) shots[k] = parse(v);
+      const n = { id: uid(), date: meta.date, lineup: meta.lineup, shots, scores, rolls, splits, leaves, jarEvents, notes, created: Date.now() };
       await redis.hset(K.nights, { [n.id]: JSON.stringify(n) });
-      for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes, K.liveMeta]) await redis.del(k);
+      for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes, K.liveShots, K.liveMeta]) await redis.del(k);
     } else if (action === "cancelNight") {
-      for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes, K.liveMeta]) await redis.del(k);
+      for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes, K.liveShots, K.liveMeta]) await redis.del(k);
     } else {
       return bad(res, "Unknown action");
     }
