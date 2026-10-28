@@ -227,13 +227,20 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .amtin{display:flex;align-items:center;gap:4px;font-weight:800}
 .amtin input{width:86px;text-align:right}
 .jarline{margin:6px 0 0;font-size:.9rem}
+.kind{display:inline-block;font-size:.72rem;font-weight:800;border-radius:6px;padding:1px 6px;margin-right:4px;vertical-align:1px}
+.kind.f{background:var(--redSoft);color:var(--red)}.kind.w{background:var(--goldSoft);color:var(--ink)}
+.addc{display:flex;flex-direction:column;gap:8px;margin-top:8px;padding:12px;border-radius:12px;background:var(--bg)}
+.addc .btn{align-self:flex-start}
+.seg{display:inline-flex;border:2px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--muted);font-weight:800;padding:8px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
 </style>
 </head>
 <body>
 <div class="wrap" id="root"></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <script>(()=>{
-let S={team:'Our Team',games:3,jar:{},bigSplitPot:false,bowlers:[],nights:[],live:null,pinRequired:false};
+let S={team:'Our Team',games:3,jar:{},bigSplitPot:false,customJar:[],bowlers:[],nights:[],live:null,pinRequired:false};
 const FINES=[
   {k:'gutter1',label:'Gutter ball, 1st ball',short:'Gutter 1st'},
   {k:'gutter2',label:'Gutter ball, 2nd ball',short:'Gutter 2nd'},
@@ -251,7 +258,7 @@ const RULES=[...FINES,...BOUNTIES,...EXTRA];
 const RULE=Object.fromEntries(RULES.map(r=>[r.k,r]));
 const VIEWS=['tonight','standings','jar','history','team'];
 let view=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'tonight';
-let loaded=false,loadError=false,busy=false,draft=null,quickOpen=false,editJar=false;
+let loaded=false,loadError=false,busy=false,draft=null,quickOpen=false,editJar=false,newFine=true;
 let lg=0,sel=null,padFor=null,ov={},ver=0,flushing=false,flushT=null,pendingJar=[],removedJar={};
 let auto=false,showScores=false;try{auto=localStorage.getItem('ch-auto')==='1';showScores=localStorage.getItem('ch-scores')==='1'}catch(e){}
 const root=document.getElementById('root');
@@ -378,21 +385,25 @@ function gameScore(b,g){
 }
 
 // ---- Chump & Hero Jar ----
-const amt=k=>+((S.jar||{})[k])||0;
-const isIn=k=>!RULE[k]||RULE[k].fine;
+const customs=()=>(S.customJar||[]).map(x=>({k:x.k,label:x.label,short:x.label,fine:x.fine,custom:true,amt:x.amt}));
+function ruleOf(k,e){if(RULE[k])return RULE[k];const c=customs().find(x=>x.k===k);if(c)return c;return {k,short:(e&&e.label)||'Custom',label:(e&&e.label)||'Custom',fine:e?e.fine!==false:true,custom:true}}
+const amt=k=>{if(RULE[k])return +((S.jar||{})[k])||0;const c=customs().find(x=>x.k===k);return c?c.amt:0};
+const isIn=e=>e.fine!==undefined?e.fine:ruleOf(e.k).fine;
+const allFines=()=>FINES.concat(customs().filter(x=>x.fine));
+const allBounties=()=>BOUNTIES.concat(customs().filter(x=>!x.fine));
 function liveJar(){if(!S.live)return [];return (S.live.jar||[]).filter(e=>!removedJar[e.id]).concat(pendingJar)}
 function allEvents(includeLive){
   const ev=[];S.nights.forEach(n=>(n.jarEvents||[]).forEach(e=>ev.push(e)));
   if(includeLive)liveJar().forEach(e=>ev.push(e));return ev;
 }
-function jarBalance(){return allEvents(true).reduce((s,e)=>s+(isIn(e.k)?e.amt:-e.amt),0)}
-function bowlerJar(evs,b){let paid=0,won=0,buy=0;evs.forEach(e=>{if(e.b!==b)return;if(e.k==='buyin')buy+=e.amt;else if(isIn(e.k))paid+=e.amt;else won+=e.amt});return {paid,won,buy,net:won-paid}}
+function jarBalance(){return allEvents(true).reduce((s,e)=>s+(isIn(e)?e.amt:-e.amt),0)}
+function bowlerJar(evs,b){let paid=0,won=0,buy=0;evs.forEach(e=>{if(e.b!==b)return;if(e.k==='buyin')buy+=e.amt;else if(isIn(e))paid+=e.amt;else won+=e.amt});return {paid,won,buy,net:won-paid}}
 function tapAmount(k){if(k==='bigSplitConv'&&S.bigSplitPot)return Math.max(0,jarBalance());return amt(k)}
 async function addJar(b,k){
   const a=tapAmount(k);
   const tmp={id:'tmp'+(++ver),b,k,g:lg,amt:a,at:Date.now(),pending:true};
   pendingJar.push(tmp);render();
-  const R=RULE[k];toast(`${nameOf(b)}: ${R.short}. ${R.fine?'Pay':'Collect'} ${money(a)}`);
+  const R=ruleOf(k);toast(`${nameOf(b)}: ${R.short}. ${R.fine?'Pay':'Collect'} ${money(a)}`);
   const x=await post({action:'addJar',bowlerId:b,k,game:lg,amt:a});
   pendingJar=pendingJar.filter(e=>e!==tmp);
   if(x.ok)S=x.d;else toast(x.d.error||'Could not save that.');
@@ -478,8 +489,8 @@ function card(b){
   const evs=liveJar().filter(e=>e.b===b.id),J=bowlerJar(evs,b.id);
   let series=0;for(let g=0;g<S.games;g++){const x=gameScore(b.id,g);if(x)series+=x.v}
   const count=k=>evs.filter(e=>e.k===k).length;
-  const chip=R=>{const n=count(R.k),a=R.k==='bigSplitConv'&&S.bigSplitPot?'Pot':short$(amt(R.k));return `<button class="jb ${R.fine?'f':'w'}" data-add="${R.k}" data-b="${b.id}"><span class="jl">${R.short}</span><span class="ja">${a}</span>${n?`<span class="jc">×${n}</span>`:''}</button>`};
-  const activeF=FINES.filter(R=>amt(R.k)>0),activeB=BOUNTIES.filter(R=>amt(R.k)>0||(R.k==='bigSplitConv'&&S.bigSplitPot));
+  const chip=R=>{const n=count(R.k),a=R.k==='bigSplitConv'&&S.bigSplitPot?'Pot':short$(amt(R.k));return `<button class="jb ${R.fine?'f':'w'}" data-add="${R.k}" data-b="${b.id}"${R.custom?' data-custom="1"':''}><span class="jl">${esc(R.short)}</span><span class="ja">${a}</span>${n?`<span class="jc">×${n}</span>`:''}</button>`};
+  const activeF=allFines().filter(R=>amt(R.k)>0),activeB=allBounties().filter(R=>amt(R.k)>0||(R.k==='bigSplitConv'&&S.bigSplitPot));
   let scores='<div class="gscores">';
   for(let g=0;g<S.games;g++){
     const x=gameScore(b.id,g),fr=getRolls(b.id,g).length;
@@ -505,7 +516,7 @@ function card(b){
   const last=evs.slice().sort((a,b)=>b.at-a.at)[0];
   const foot=[];
   if(amt('buyin')>0){const paidB=count('buyin');foot.push(paidB?`<span class="paidb">Bought in ${money(amt('buyin'))} ✓</span>`:`<button class="jb buy" data-add="buyin" data-b="${b.id}"><span class="jl">Buy-in</span><span class="ja">${money(amt('buyin'))}</span></button>`)}
-  if(last)foot.push(`<button class="linkbtn" data-undojar="${last.id}">Undo ${esc(RULE[last.k].short)}</button>`);
+  if(last)foot.push(`<button class="linkbtn" data-undojar="${last.id}">Undo ${esc(ruleOf(last.k,last).short)}</button>`);
   if(foot.length)h+=`<div class="bfoot">${foot.join('')}</div>`;
   return h+'</section>';
 }
@@ -567,7 +578,7 @@ function vStandings(){
 }
 function vJar(){
   const J=S.jar||{},bal=jarBalance(),ev=allEvents(true);
-  const tin=ev.filter(e=>isIn(e.k)).reduce((a,e)=>a+e.amt,0),tout=ev.filter(e=>!isIn(e.k)).reduce((a,e)=>a+e.amt,0);
+  const tin=ev.filter(e=>isIn(e)).reduce((a,e)=>a+e.amt,0),tout=ev.filter(e=>!isIn(e)).reduce((a,e)=>a+e.amt,0);
   let h=`<div class="jarhead"><div class="muted">In the jar right now</div><div class="jarbal ${bal<0?'neg':''}">${bal<0?'−':''}${money(bal)}</div><div class="muted" style="font-size:.88rem">${money(tin)} paid in, ${money(tout)} paid out this season</div></div>`;
   const row=R=>{
     if(editJar)return `<label class="rulerow edit"><span>${R.label}</span><span class="amtin">$<input type="number" min="0" step="0.25" inputmode="decimal" data-jar="${R.k}" value="${(+J[R.k]||0).toFixed(2)}"></span></label>`;
@@ -576,6 +587,12 @@ function vJar(){
   };
   h+=`<div class="rules"><div class="rhead"><b>Fines</b><span class="muted">Tossed in as soon as the ball returns</span></div>${FINES.map(row).join('')}${row(RULE.chump)}`;
   h+=`<div class="rhead"><b>Bounties</b><span class="muted">Pulled from the jar by the shooter</span></div>${BOUNTIES.map(row).join('')}`;
+  const cs=customs();
+  h+=`<div class="rhead"><b>Custom buttons</b><span class="muted">Your team’s own fines and bounties</span></div>`;
+  h+=cs.length?cs.map(x=>editJar?`<label class="rulerow edit"><span><span class="kind ${x.fine?'f':'w'}">${x.fine?'Fine':'Bounty'}</span> ${esc(x.label)}</span><span class="amtin">$<input type="number" min="0" step="0.25" inputmode="decimal" data-cjar="${x.k}" value="${x.amt.toFixed(2)}"></span></label>`
+    :`<div class="rulerow"><span><span class="kind ${x.fine?'f':'w'}">${x.fine?'Fine':'Bounty'}</span> ${esc(x.label)}</span><span class="row" style="gap:12px;flex-wrap:nowrap"><b>${x.amt?money(x.amt):'Off'}</b><button class="linkbtn danger" data-delc="${x.k}" aria-label="Delete ${esc(x.label)}">Delete</button></span></div>`).join('')
+    :'<p class="muted" style="margin:6px 0">None yet.</p>';
+  if(!editJar)h+=`<div class="addc"><input type="text" id="cName" maxlength="24" placeholder="Button name, e.g. 5-pin miss"><div class="row" style="gap:8px;flex-wrap:nowrap"><div class="seg" role="group" aria-label="Fine or bounty"><button type="button" data-ftype="1" aria-pressed="${newFine}">Fine</button><button type="button" data-ftype="0" aria-pressed="${!newFine}">Bounty</button></div><span class="amtin">$<input type="number" id="cAmt" min="0" step="0.25" inputmode="decimal" value="0.50"></span></div><button class="btn" id="addC">Add button</button></div>`;
   h+=`<div class="rhead"><b>Setup</b></div>${row(RULE.buyin)}`;
   if(editJar){
     h+=`<label class="rulerow edit"><span>Big split conversion takes the whole jar (pot clean)</span><input type="checkbox" id="potClean" ${S.bigSplitPot?'checked':''}></label>`;
@@ -587,8 +604,8 @@ function vJar(){
   h+=`<h2>Who’s paying</h2><div class="tablewrap"><table><thead><tr><th>Bowler</th><th>Fines</th><th>Bounties</th><th>Net</th>${anyBuy?'<th>Buy-ins</th>':''}</tr></thead><tbody>`;
   S.bowlers.map(b=>({b,J:bowlerJar(ev,b.id)})).sort((a,c)=>c.J.net-a.J.net).forEach(({b,J})=>{h+=`<tr><td class="name">${esc(b.name)}</td><td>${money(J.paid)}</td><td>${money(J.won)}</td><td class="net ${J.net>0?'pos':J.net<0?'neg':''}">${smoney(J.net)}</td>${anyBuy?`<td>${money(J.buy)}</td>`:''}</tr>`});
   h+=`</tbody></table></div><p class="hint">Net is bounties collected minus fines paid. Buy-ins seed the jar and don’t count against anyone.</p>`;
-  const stat=RULES.filter(R=>ev.some(e=>e.k===R.k));
-  h+=`<h2>Jar stats</h2><div class="tablewrap"><table><thead><tr><th>Bowler</th>${stat.map(R=>`<th>${R.short}</th>`).join('')}</tr></thead><tbody>`;
+  const known=RULES.concat(customs()),stat=known.filter(R=>ev.some(e=>e.k===R.k));ev.forEach(e=>{if(!stat.some(R=>R.k===e.k))stat.push(ruleOf(e.k,e))});
+  h+=`<h2>Jar stats</h2><div class="tablewrap"><table><thead><tr><th>Bowler</th>${stat.map(R=>`<th>${esc(R.short)}</th>`).join('')}</tr></thead><tbody>`;
   S.bowlers.forEach(b=>{h+=`<tr><td class="name">${esc(b.name)}</td>${stat.map(R=>{const n=ev.filter(e=>e.b===b.id&&e.k===R.k).length;return `<td>${n?`<span class="pill ${R.fine?'c':'h'}">${n}</span>`:'–'}</td>`}).join('')}</tr>`});
   return h+`</tbody></table></div><p class="hint">Includes tonight while a night is in progress.</p>`;
 }
@@ -605,9 +622,9 @@ function vHistory(){
     if(n.rolls){for(let g=0;g<S.games;g++){const ids=Object.keys(n.rolls).filter(id=>n.rolls[id][g]);if(!ids.length)continue;sheets+=`<div class="hsg"><b>Game ${g+1}</b>`+ids.map(id=>`<div class="hsrow"><span>${esc(nameOf(id))}</span>${sheet(scoreGame(n.rolls[id][g]),null,true)}</div>`).join('')+'</div>'}}
     const ev=n.jarEvents||[];let jar='';
     if(ev.length){
-      const tin=ev.filter(e=>isIn(e.k)).reduce((a,e)=>a+e.amt,0),tout=ev.filter(e=>!isIn(e.k)).reduce((a,e)=>a+e.amt,0);
+      const tin=ev.filter(e=>isIn(e)).reduce((a,e)=>a+e.amt,0),tout=ev.filter(e=>!isIn(e)).reduce((a,e)=>a+e.amt,0);
       const per={};ev.forEach(e=>{(per[e.b]=per[e.b]||{})[e.k]=(per[e.b][e.k]||0)+1});
-      jar=`<details class="sheets"><summary>Jar: ${money(tin)} in, ${money(tout)} out</summary>`+Object.keys(per).map(b=>`<p class="jarline"><b>${esc(nameOf(b))}</b> ${Object.keys(per[b]).map(k=>`${RULE[k]?RULE[k].short:k}${per[b][k]>1?' ×'+per[b][k]:''}`).join(', ')}</p>`).join('')+'</details>';
+      jar=`<details class="sheets"><summary>Jar: ${money(tin)} in, ${money(tout)} out</summary>`+Object.keys(per).map(b=>`<p class="jarline"><b>${esc(nameOf(b))}</b> ${Object.keys(per[b]).map(k=>`${esc(ruleOf(k,ev.find(e=>e.k===k)).short)}${per[b][k]>1?' ×'+per[b][k]:''}`).join(', ')}</p>`).join('')+'</details>';
     }
     return `<div class="night"><div class="row" style="justify-content:space-between"><span class="date">${esc(fmtDate(n.date))}</span><button class="btn danger" data-del="${n.id}">Delete</button></div><div class="games">${gs}</div>${jar}${sheets?`<details class="sheets"><summary>Scoresheets</summary>${sheets}</details>`:''}</div>`;
   }).join('');
@@ -675,8 +692,17 @@ function wire(){
   if($('cancelJar'))$('cancelJar').onclick=()=>{editJar=false;render()};
   if($('saveJar'))$('saveJar').onclick=async()=>{
     const jar={};all('[data-jar]',i=>{jar[i.dataset.jar]=Math.max(0,Math.round((+i.value||0)*4)/4)});
-    if(await act({action:'settings',jar,bigSplitPot:$('potClean').checked},'Jar amounts saved')){editJar=false;render()}
+    const customJar=(S.customJar||[]).map(x=>{const i=root.querySelector(`[data-cjar="${x.k}"]`);return Object.assign({},x,i?{amt:Math.max(0,Math.round((+i.value||0)*4)/4)}:{})});
+    if(await act({action:'settings',jar,customJar,bigSplitPot:$('potClean').checked},'Jar amounts saved')){editJar=false;render()}
   };
+  all('[data-ftype]',b=>b.onclick=()=>{newFine=b.dataset.ftype==='1';all('[data-ftype]',x=>x.setAttribute('aria-pressed',String(x.dataset.ftype===(newFine?'1':'0'))))});
+  if($('addC')){const addC=()=>{
+    const label=$('cName').value.trim(),a=Math.max(0,Math.round((+$('cAmt').value||0)*4)/4);
+    if(!label){toast('Give the button a name.');$('cName').focus();return}
+    if((S.customJar||[]).length>=12){toast('You can have up to 12 custom buttons.');return}
+    act({action:'settings',customJar:(S.customJar||[]).concat([{label,fine:newFine,amt:a}])},`${label} added to every bowler’s card`);
+  };$('addC').onclick=addC;$('cName').onkeydown=e=>{if(e.key==='Enter')addC()}}
+  all('[data-delc]',b=>b.onclick=()=>{const x=(S.customJar||[]).find(c=>c.k===b.dataset.delc);if(x&&confirm(`Delete the “${x.label}” button? Taps already logged stay in the jar.`))act({action:'settings',customJar:S.customJar.filter(c=>c.k!==x.k)},'Button deleted')});
   // team
   if($('addB')){const add=()=>{const n=$('newName').value.trim();if(n)act({action:'addBowler',name:n},n+' added')};$('addB').onclick=add;$('newName').onkeydown=e=>{if(e.key==='Enter')add()}}
   all('[data-rm]',b=>b.onclick=()=>{const nm=nameOf(b.dataset.rm);if(confirm('Remove '+nm+'? Their past scores stay in history.'))act({action:'removeBowler',id:b.dataset.rm},nm+' removed')});
@@ -694,6 +720,7 @@ setInterval(()=>{
   if(S.live||tick%4===0)load();
 },5000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
+window.addEventListener('hashchange',()=>{const v=location.hash.slice(1);if(VIEWS.includes(v)&&v!==view){view=v;editJar=false;render()}});
 })();
 </script>
 </body>
