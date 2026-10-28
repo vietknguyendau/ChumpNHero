@@ -19,6 +19,19 @@ const DEFAULT_JAR = {
 };
 const JAR_TAPS = ["gutter1", "gutter2", "openSingle", "foul", "splitCaused",
   "splitConv", "bigSplitConv", "fourBagger", "clutch10", "buyin"];
+// Team-made buttons, e.g. {k:"c_ab12cd", label:"5-pin miss", fine:true, amt:0.5}
+function cleanCustom(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  return list.slice(0, 12).map((c) => {
+    let k = String((c && c.k) || "");
+    if (!/^c_[a-z0-9]{4,12}$/.test(k) || seen.has(k)) k = "c_" + uid();
+    seen.add(k);
+    const label = String((c && c.label) || "").trim().slice(0, 24);
+    const amt = Math.max(0, Math.min(100, Math.round((+(c && c.amt) || 0) * 4) / 4));
+    return { k, label, fine: c ? c.fine !== false : true, amt };
+  }).filter((c) => c.label);
+}
 function normalize(raw) {
   raw = raw || {};
   const s = { ...DEFAULTS, ...raw };
@@ -27,6 +40,7 @@ function normalize(raw) {
   for (const k of Object.keys(DEFAULT_JAR)) if (typeof saved[k] === "number") jar[k] = saved[k];
   s.jar = jar;
   s.bigSplitPot = Boolean(raw.bigSplitPot);
+  s.customJar = cleanCustom(raw.customJar);
   delete s.fine;
   return s;
 }
@@ -162,6 +176,7 @@ export default async function handler(req, res) {
       const cur = await getSettings();
       if (body.team !== undefined) cur.team = String(body.team).trim().slice(0, 40) || cur.team;
       if (body.games !== undefined) cur.games = Math.max(1, Math.min(5, Math.round(+body.games || 3)));
+      if (Array.isArray(body.customJar)) cur.customJar = cleanCustom(body.customJar);
       if (body.bigSplitPot !== undefined) cur.bigSplitPot = Boolean(body.bigSplitPot);
       if (body.jar && typeof body.jar === "object") {
         for (const k of Object.keys(DEFAULT_JAR)) {
@@ -209,9 +224,11 @@ export default async function handler(req, res) {
     } else if (action === "addJar") {
       if (!(await redis.get(K.liveMeta))) return bad(res, "No night in progress. Start one first.");
       const b = String(body.bowlerId || "").slice(0, 20), k = String(body.k || "");
-      if (!b || !JAR_TAPS.includes(k)) return bad(res, "Unknown jar item");
+      const custom = (await getSettings()).customJar.find((c) => c.k === k);
+      if (!b || (!JAR_TAPS.includes(k) && !custom)) return bad(res, "Unknown jar item");
       const amt = Math.max(0, Math.min(1000, Math.round((+body.amt || 0) * 100) / 100));
       const e = { id: uid(), b, k, g: Math.max(0, Math.min(4, Math.round(+body.game || 0))), amt, at: Date.now() };
+      if (custom) { e.label = custom.label; e.fine = custom.fine; } // kept even if the button is deleted later
       await redis.hset(K.liveJar, { [e.id]: JSON.stringify(e) });
     } else if (action === "removeJar") {
       await redis.hdel(K.liveJar, String(body.id || ""));
