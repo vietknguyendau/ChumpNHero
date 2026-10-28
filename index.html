@@ -194,6 +194,8 @@ details summary{cursor:pointer;font-weight:600;color:var(--teal)}
 .gv small{display:block;font-size:.66rem;color:var(--muted);font-weight:600}
 .gs.ser b{display:flex;align-items:center;justify-content:center;min-height:42px;font-size:1.05rem;font-variant-numeric:tabular-nums}
 .framesbtn{display:block;margin-top:6px;font-size:.88rem}
+.scorewrap{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.jrow:first-of-type{margin-top:4px}
 .padwrap{margin-top:12px;padding:12px;border-radius:14px;background:var(--lane)}
 .jrow{display:grid;grid-template-columns:64px 1fr;gap:8px;align-items:start;margin-top:12px}
 .jt{font-size:.8rem;font-weight:800;color:var(--muted);padding-top:9px}
@@ -251,7 +253,7 @@ const VIEWS=['tonight','standings','jar','history','team'];
 let view=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'tonight';
 let loaded=false,loadError=false,busy=false,draft=null,quickOpen=false,editJar=false;
 let lg=0,sel=null,padFor=null,ov={},ver=0,flushing=false,flushT=null,pendingJar=[],removedJar={};
-let auto=false;try{auto=localStorage.getItem('ch-auto')==='1'}catch(e){}
+let auto=false,showScores=false;try{auto=localStorage.getItem('ch-auto')==='1';showScores=localStorage.getItem('ch-scores')==='1'}catch(e){}
 const root=document.getElementById('root');
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -447,8 +449,8 @@ function spotlight(){
 function vTonight(){
   if(!S.bowlers.length)return '<div class="empty"><p><b>Add your bowlers first.</b></p><p>Head to the Team tab and add everyone who bowls with you.</p><button class="btn" data-go="team">Add bowlers</button></div>';
   if(S.live)return vLive();
-  return spotlight()+`<h2 style="margin-top:4px">Tonight</h2><div class="lane"><p style="margin:0 0 12px">Each bowler gets a card with their scores, fines and bounties. Anyone on the team can update it from their own phone.</p><div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:150px">Date<input type="date" id="liveDate" value="${today()}"></label><button class="btn" id="startLive">Start night</button></div></div>`+
-    `<details class="quick" id="quick" ${quickOpen||draft?'open':''}><summary>Logging a past night? Enter totals instead</summary>${totalsForm()}</details>`;
+  return spotlight()+`<h2 style="margin-top:4px">Tonight</h2><div class="lane"><p style="margin:0 0 12px">Start the night to get fine and bounty buttons for every bowler. Anyone on the team can tap them from their own phone.</p><div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:150px">Date<input type="date" id="liveDate" value="${today()}"></label><button class="btn" id="startLive">Start night</button></div></div>`+
+    `<details class="quick" id="quick" ${quickOpen||draft?'open':''}><summary>Logging scores from a past night? Enter totals</summary>${totalsForm()}</details>`;
 }
 function totalsForm(){
   const d=draft||{date:today(),scores:{}};
@@ -486,17 +488,20 @@ function card(b){
          :`<input type="number" inputmode="numeric" min="0" max="300" class="gin" data-tb="${b.id}" data-tg="${g}" value="${x?x.v:''}" placeholder="–" aria-label="${esc(b.name)} game ${g+1} score">`)+'</div>';
   }
   scores+=`<div class="gs ser"><span class="gl">Series</span><b>${series||'–'}</b></div></div>`;
-  let h=`<section class="bcard${padFor===b.id?' open':''}" id="card-${b.id}"><div class="bhead"><h3>${esc(b.name)}</h3><span class="bjar ${J.net>0?'pos':J.net<0?'neg':''}">${J.paid||J.won?'Jar '+smoney(J.net):''}</span></div>${scores}`;
-  if(padFor===b.id){
-    const r=getRolls(b.id,lg),sc=scoreGame(r),nb=nextBall(r);
-    const status=nb.done?`Game ${lg+1} final: ${sc.total}`:`Game ${lg+1}, frame ${nb.frame+1}, ball ${nb.ball+1}`+(nb.max<10?`. ${nb.max} standing`:'');
-    h+=`<div class="padwrap"><div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="muted">${status}</span><button class="linkbtn" id="closePad">Close frames</button></div>${sheet(sc,nb)}<div style="margin-top:10px">${pad(nb,r)}</div></div>`;
-  } else {
-    const hasTyped=S.live.totals&&typeof S.live.totals[b.id+':'+lg]==='number';
-    if(!hasTyped)h+=`<button class="linkbtn framesbtn" data-frames="${b.id}" data-fg="${lg}">Score game ${lg+1} frame by frame</button>`;
-  }
+  let h=`<section class="bcard${padFor===b.id?' open':''}" id="card-${b.id}"><div class="bhead"><h3>${esc(b.name)}</h3><span class="bjar ${J.net>0?'pos':J.net<0?'neg':''}">${J.paid||J.won?smoney(J.net):'$0.00'}</span></div>`;
   h+=`<div class="jrow"><span class="jt">Fines</span><div class="jbs">${activeF.map(chip).join('')||'<span class="muted">All fines are off</span>'}</div></div>`;
   h+=`<div class="jrow"><span class="jt">Bounties</span><div class="jbs">${activeB.map(chip).join('')||'<span class="muted">All bounties are off</span>'}</div></div>`;
+  if(!showScores){}
+  else if(padFor===b.id){h+=`<div class="scorewrap">${scores}`;
+    const r=getRolls(b.id,lg),sc=scoreGame(r),nb=nextBall(r);
+    const status=nb.done?`Game ${lg+1} final: ${sc.total}`:`Game ${lg+1}, frame ${nb.frame+1}, ball ${nb.ball+1}`+(nb.max<10?`. ${nb.max} standing`:'');
+    h+=`</div><div class="padwrap"><div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="muted">${status}</span><button class="linkbtn" id="closePad">Close frames</button></div>${sheet(sc,nb)}<div style="margin-top:10px">${pad(nb,r)}</div></div>`;
+  } else {
+    h+=`<div class="scorewrap">${scores}`;
+    const hasTyped=S.live.totals&&typeof S.live.totals[b.id+':'+lg]==='number';
+    if(!hasTyped)h+=`<button class="linkbtn framesbtn" data-frames="${b.id}" data-fg="${lg}">Score game ${lg+1} frame by frame</button>`;
+    h+='</div>';
+  }
   const last=evs.slice().sort((a,b)=>b.at-a.at)[0];
   const foot=[];
   if(amt('buyin')>0){const paidB=count('buyin');foot.push(paidB?`<span class="paidb">Bought in ${money(amt('buyin'))} ✓</span>`:`<button class="jb buy" data-add="buyin" data-b="${b.id}"><span class="jl">Buy-in</span><span class="ja">${money(amt('buyin'))}</span></button>`)}
@@ -504,7 +509,15 @@ function card(b){
   if(foot.length)h+=`<div class="bfoot">${foot.join('')}</div>`;
   return h+'</section>';
 }
+function jarBoard(){
+  const LJ=liveJar();let tf=0,tb=0,tbuy=0;
+  let h=`<h2>Tonight’s jar</h2><div class="tablewrap"><table class="tally"><thead><tr><th>Bowler</th><th>Fines</th><th>Bounties</th><th>Net</th></tr></thead><tbody>`;
+  S.bowlers.forEach(b=>{const J=bowlerJar(LJ,b.id);tf+=J.paid;tb+=J.won;tbuy+=J.buy;h+=`<tr><td class="name">${esc(b.name)}</td><td>${money(J.paid)}</td><td>${money(J.won)}</td><td class="jar ${J.net>0?'pos':J.net<0?'neg':''}">${smoney(J.net)}</td></tr>`});
+  h+=`<tr class="teamrow"><td class="name">Team</td><td>${money(tf)}</td><td>${money(tb)}</td><td class="jar">${smoney(tf+tbuy-tb)}<small>to jar</small></td></tr></tbody></table></div>`;
+  return h;
+}
 function board(){
+  if(!showScores)return jarBoard();
   const G=S.games;
   let h=`<h2>Team tally</h2><div class="tablewrap"><table class="tally"><thead><tr><th>Bowler</th>`;
   for(let g=0;g<G;g++)h+=`<th class="${g===lg?'on':''}">G${g+1}</th>`;
@@ -534,10 +547,10 @@ function vLive(){
   sel=padFor;
   const bal=jarBalance();
   let h=`<div class="livebar"><div><div class="muted" style="font-size:.85rem">Bowling now</div><div class="date">${esc(fmtDate(L.date))}</div></div><div class="jarnow"><span>Jar now</span><b class="${bal<0?'neg':''}">${bal<0?'−':''}${money(bal)}</b></div></div>`;
-  h+='<div class="gtabs" role="tablist" aria-label="Current game">'+Array.from({length:S.games},(_,g)=>`<button role="tab" data-g="${g}" aria-selected="${g===lg}">Game ${g+1}<small>Team ${teamGame(g)}</small></button>`).join('')+'</div>';
-  h+='<p class="hint" style="margin:-4px 0 12px">Fines and bounties are logged to the game selected above.</p>';
+  h+='<div class="gtabs" role="tablist" aria-label="Current game">'+Array.from({length:S.games},(_,g)=>`<button role="tab" data-g="${g}" aria-selected="${g===lg}">Game ${g+1}${showScores?`<small>Team ${teamGame(g)}</small>`:''}</button>`).join('')+'</div>';
+  h+=`<label class="autosw" style="margin:0 0 14px"><input type="checkbox" id="scoreSw" ${showScores?'checked':''}> Track scores too (optional)</label>`;
   h+=S.bowlers.map(card).join('');
-  h+=`<label class="autosw"><input type="checkbox" id="autoSw" ${auto?'checked':''}> When scoring frames, jump to the next bowler after each frame</label>`;
+  if(showScores)h+=`<label class="autosw"><input type="checkbox" id="autoSw" ${auto?'checked':''}> When scoring frames, jump to the next bowler after each frame</label>`;
   h+=board();
   h+=`<div class="row" style="margin-top:18px;justify-content:space-between"><button class="btn" id="finishLive">Finish night</button><button class="linkbtn danger" id="cancelLive">Discard this night</button></div>`;
   return h;
@@ -633,6 +646,7 @@ function wire(){
   all('[data-pins]',b=>b.onclick=()=>roll(+b.dataset.pins));
   if($('undo'))$('undo').onclick=()=>{const r=getRolls(sel,lg);if(r.length){setRolls(sel,lg,r.slice(0,-1));render()}};
   if($('nextB'))$('nextB').onclick=()=>{advance();render()};
+  if($('scoreSw'))$('scoreSw').onchange=e=>{showScores=e.target.checked;if(!showScores)padFor=null;try{localStorage.setItem('ch-scores',showScores?'1':'0')}catch(x){}render()};
   if($('autoSw'))$('autoSw').onchange=e=>{auto=e.target.checked;try{localStorage.setItem('ch-auto',auto?'1':'0')}catch(x){}render()};
   all('[data-tb]',inp=>{
     inp.onchange=()=>{
