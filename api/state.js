@@ -50,6 +50,8 @@ function normalize(raw) {
   s.bigSplitPot = Boolean(raw.bigSplitPot);
   s.customJar = cleanCustom(raw.customJar);
   s.hdcp = cleanHdcp(raw.hdcp);
+  // League-sheet checkpoints, so week-by-week history survives pasting a newer sheet.
+  s.hdcpHistory = Array.isArray(raw.hdcpHistory) ? raw.hdcpHistory.filter((x) => x && /^\d{4}-\d{2}-\d{2}$/.test(x.asOf) && x.b).slice(-40) : [];
   s.bigGame = +raw.bigGame >= 100 && +raw.bigGame <= 300 ? Math.round(+raw.bigGame) : 200; // score that earns the big-game bounty
   delete s.fine;
   return s;
@@ -238,7 +240,17 @@ export default async function handler(req, res) {
         upd[e.id] = JSON.stringify({ ...cur, sheetPins: intIn(e.pins, 100000), sheetGames: intIn(e.games, 1000) });
       }
       if (Object.keys(upd).length) await redis.hset(K.bowlers, upd);
-      if (body.hdcp) { const cur = await getSettings(); cur.hdcp = cleanHdcp({ ...cur.hdcp, ...body.hdcp }); await redis.set(K.settings, JSON.stringify(cur)); }
+      const cur = await getSettings();
+      if (body.hdcp) cur.hdcp = cleanHdcp({ ...cur.hdcp, ...body.hdcp });
+      if (cur.hdcp.asOf) {
+        const snap = { asOf: cur.hdcp.asOf, b: {} };
+        for (const [id, v] of Object.entries(all)) {
+          const b = upd[id] ? parse(upd[id]) : parse(v);
+          if (b.sheetGames) snap.b[id] = [b.sheetPins || 0, b.sheetGames];
+        }
+        cur.hdcpHistory = cur.hdcpHistory.filter((x) => x.asOf !== snap.asOf).concat([snap]).sort((a, b) => a.asOf.localeCompare(b.asOf)).slice(-40);
+      }
+      await redis.set(K.settings, JSON.stringify(cur));
     } else if (action === "removeBowler") {
       await redis.hdel(K.bowlers, String(body.id));
     } else if (action === "addNight") {
