@@ -227,6 +227,7 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .amtin{display:flex;align-items:center;gap:4px;font-weight:800}
 .amtin input{width:86px;text-align:right}
 .jarline{margin:6px 0 0;font-size:.9rem}
+.chips.wrap{flex-wrap:wrap;overflow:visible}
 .kind{display:inline-block;font-size:.72rem;font-weight:800;border-radius:6px;padding:1px 6px;margin-right:4px;vertical-align:1px}
 .kind.f{background:var(--redSoft);color:var(--red)}.kind.w{background:var(--goldSoft);color:var(--ink)}
 .addc{display:flex;flex-direction:column;gap:8px;margin-top:8px;padding:12px;border-radius:12px;background:var(--bg)}
@@ -308,6 +309,9 @@ try{auto=localStorage.getItem('ch-auto')==='1';showScores=localStorage.getItem('
 const root=document.getElementById('root');
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Tonight's lineup (roster order). Outside a live night this is the whole roster.
+const LU=()=>S.live&&Array.isArray(S.live.lineup)?S.bowlers.filter(b=>S.live.lineup.includes(b.id)):S.bowlers;
+let pick=null;
 const nameOf=id=>{const b=S.bowlers.find(x=>x.id===id);return b?b.name:'Former bowler'};
 function today(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)}
 function fmtDate(s){const p=s.split('-');return new Date(+p[0],+p[1]-1,+p[2]).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric',year:'numeric'})}
@@ -454,7 +458,7 @@ async function flush(){
   flushing=false;if(!typing())render();
 }
 function advance(){
-  deckUp=new Set();const ids=S.bowlers.map(b=>b.id);const i=ids.indexOf(sel);
+  deckUp=new Set();const ids=LU().map(b=>b.id);const i=ids.indexOf(sel);
   for(let s=1;s<=ids.length;s++){const id=ids[(i+s)%ids.length];if(!nextBall(getRolls(id,lg)).done){sel=padFor=id;return}}
 }
 function roll(n,mask){
@@ -488,7 +492,7 @@ const allBounties=()=>BOUNTIES.concat(customs().filter(x=>!x.fine));
 const evSum=evs=>evs.reduce((s,e)=>s+(isIn(e)?e.amt:-e.amt),0);
 function autoLive(){
   const ev=[];if(!S.live)return ev;
-  S.bowlers.forEach(b=>{for(let g=0;g<S.games;g++){const r=getRolls(b.id,g);if(!r.length)continue;
+  LU().forEach(b=>{for(let g=0;g<S.games;g++){const r=getRolls(b.id,g);if(!r.length)continue;
     autoJar(r,getLeaves(b.id,g)).forEach(a=>ev.push({id:`auto:${b.id}:${g}:${a.i}:${a.k}`,b:b.id,k:a.k,g,i:a.i,amt:amt(a.k),at:0,auto:true}))}});
   return ev;
 }
@@ -687,9 +691,16 @@ function spotlight(){
   return `<p class="muted" style="margin:0 0 8px">Last night out: ${esc(fmtDate(last.date))}</p><div class="spot">${card('hero','Hero',top(h))}${card('chump','Chump',top(c))}</div>`;
 }
 function vTonight(){
-  if(!S.bowlers.length)return '<div class="empty"><p><b>Add your bowlers first.</b></p><p>Head to the Team tab and add everyone who bowls with you.</p><button class="btn" data-go="team">Add bowlers</button></div>';
+  if(!S.bowlers.length)return '<div class="empty"><p><b>Add your roster first.</b></p><p>Head to the Team tab and add everyone who bowls with you.</p><button class="btn" data-go="team">Add bowlers</button></div>';
   if(S.live)return vLive();
-  return spotlight()+`<h2 style="margin-top:4px">Tonight</h2><div class="lane"><p style="margin:0 0 12px">Start the night to get fine and bounty buttons for every bowler. Anyone on the team can tap them from their own phone.</p><div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:150px">Date<input type="date" id="liveDate" value="${today()}"></label><button class="btn" id="startLive">Start night</button></div></div>`+
+  if(!pick)pick=new Set(S.bowlers.map(b=>b.id));
+  [...pick].forEach(id=>{if(!S.bowlers.some(b=>b.id===id))pick.delete(id)});
+  const last=S.nights.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created).find(n=>Array.isArray(n.lineup));
+  const lastIds=last?last.lineup.filter(id=>S.bowlers.some(b=>b.id===id)):[];
+  return spotlight()+`<h2 style="margin-top:4px">Tonight</h2><div class="lane"><p style="margin:0 0 10px"><b>Who’s bowling?</b> <span class="muted">${pick.size} of ${S.bowlers.length} picked</span></p>
+  <div class="chips wrap">${S.bowlers.map(b=>`<button class="chip" data-pick="${b.id}" aria-pressed="${pick.has(b.id)}">${pick.has(b.id)?'✓ ':''}${esc(b.name)}</button>`).join('')}</div>
+  <div class="row" style="gap:16px;margin:4px 0 14px"><button class="linkbtn" data-pickall="1">Everyone</button>${lastIds.length?`<button class="linkbtn" data-picklast="1">Same as last night (${lastIds.length})</button>`:''}</div>
+  <p style="margin:0 0 12px" class="muted">Everyone picked gets fine and bounty buttons. Anyone on the team can tap them from their own phone.</p><div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:150px">Date<input type="date" id="liveDate" value="${today()}"></label><button class="btn" id="startLive">Start night</button></div></div>`+
     `<details class="quick" id="quick" ${quickOpen||draft?'open':''}><summary>Logging scores from a past night? Enter totals</summary>${totalsForm()}</details>`;
 }
 function totalsForm(){
@@ -737,7 +748,7 @@ function pad(nb,r){
   b+=`<button class="spare" data-pins="${nb.max}" ${nb.max<10?'':'disabled'} aria-label="Spare">/</button><button class="strike" data-pins="10" ${nb.max===10?'':'disabled'} aria-label="Strike">X</button>`;
   return `<div class="pad">${b}</div><div class="row" style="margin-top:10px;justify-content:space-between"><button class="btn ghost" id="undo" ${r.length?'':'disabled'}>Undo</button>${auto?'<button class="linkbtn" id="nextB">Skip to next bowler</button>':''}</div>`;
 }
-const teamGame=g=>S.bowlers.reduce((s,b)=>{const x=gameScore(b.id,g);return s+(x?x.v:0)},0);
+const teamGame=g=>LU().reduce((s,b)=>{const x=gameScore(b.id,g);return s+(x?x.v:0)},0);
 function card(b){
   const evs=liveJar().filter(e=>e.b===b.id),J=bowlerJar(evs,b.id);
   let series=0;for(let g=0;g<S.games;g++){const x=gameScore(b.id,g);if(x)series+=x.v}
@@ -780,7 +791,7 @@ function card(b){
 function jarBoard(){
   const LJ=liveJar();let tf=0,tb=0,tbuy=0;
   let h=`<h2>Tonight’s jar</h2><div class="tablewrap"><table class="tally"><thead><tr><th>Bowler</th><th>Fines</th><th>Bounties</th><th>Net</th></tr></thead><tbody>`;
-  S.bowlers.forEach(b=>{const J=bowlerJar(LJ,b.id);tf+=J.paid;tb+=J.won;tbuy+=J.buy;h+=`<tr><td class="name">${esc(b.name)}</td><td>${money(J.paid)}</td><td>${money(J.won)}</td><td class="jar ${J.net>0?'pos':J.net<0?'neg':''}">${smoney(J.net)}</td></tr>`});
+  LU().forEach(b=>{const J=bowlerJar(LJ,b.id);tf+=J.paid;tb+=J.won;tbuy+=J.buy;h+=`<tr><td class="name">${esc(b.name)}</td><td>${money(J.paid)}</td><td>${money(J.won)}</td><td class="jar ${J.net>0?'pos':J.net<0?'neg':''}">${smoney(J.net)}</td></tr>`});
   h+=`<tr class="teamrow"><td class="name">Team</td><td>${money(tf)}</td><td>${money(tb)}</td><td class="jar">${smoney(tf+tbuy-tb)}<small>to jar</small></td></tr></tbody></table></div>`;
   return h;
 }
@@ -790,10 +801,10 @@ function board(){
   let h=`<h2>Team tally</h2><div class="tablewrap"><table class="tally"><thead><tr><th>Bowler</th>`;
   for(let g=0;g<G;g++)h+=`<th class="${g===lg?'on':''}">G${g+1}</th>`;
   h+='<th>Series</th><th>Jar</th></tr></thead><tbody>';
-  const cur=S.bowlers.map(b=>({id:b.id,x:gameScore(b.id,lg)})).filter(o=>o.x);
+  const cur=LU().map(b=>({id:b.id,x:gameScore(b.id,lg)})).filter(o=>o.x);
   const hi=cur.length>1?Math.max(...cur.map(o=>o.x.v)):null,lo=cur.length>1?Math.min(...cur.map(o=>o.x.v)):null;
   const LJ=liveJar();let jin=0,jout=0;
-  S.bowlers.forEach(b=>{
+  LU().forEach(b=>{
     let series=0,any=false;h+=`<tr><td class="name">${esc(b.name)}</td>`;
     for(let g=0;g<G;g++){
       const x=gameScore(b.id,g);if(!x){h+=`<td class="${g===lg?'on':''}">–</td>`;continue}
@@ -809,16 +820,27 @@ function board(){
   h+=`<td>${tot||'–'}</td><td class="jar">${smoney(jin-jout)}<small>to jar</small></td></tr></tbody></table></div><p class="hint">Gold is leading the current game, red is trailing.</p>`;
   return h;
 }
+function hasTonight(id){
+  if(!S.live)return false;
+  for(let g=0;g<S.games;g++)if(getRolls(id,g).length||(S.live.totals&&typeof S.live.totals[id+':'+g]==='number'))return true;
+  return (S.live.jar||[]).some(e=>e.b===id);
+}
+function lineupBlock(){
+  const on=LU().map(b=>b.id);
+  return `<details class="lanesbox" id="lineupBox" ${openNotes.lineup?'open':''}><summary>Bowling tonight: ${on.length} of ${S.bowlers.length}<span class="nsum">${esc(LU().map(b=>b.name).join(', '))}</span></summary>
+  <p class="hint" style="margin:8px 0">Tap to add a sub or sit someone out.</p><div class="chips wrap">${S.bowlers.map(b=>`<button class="chip" data-lu="${b.id}" aria-pressed="${on.includes(b.id)}">${on.includes(b.id)?'✓ ':''}${esc(b.name)}</button>`).join('')}</div></details>`;
+}
 function vLive(){
   const L=S.live;if(lg>=S.games)lg=0;
-  if(padFor&&!S.bowlers.some(b=>b.id===padFor))padFor=null;
+  if(padFor&&!LU().some(b=>b.id===padFor))padFor=null;
   sel=padFor;
   const bal=jarBalance();
   let h=`<div class="livebar"><div><div class="muted" style="font-size:.85rem">Bowling now</div><div class="date">${esc(fmtDate(L.date))}</div></div><div class="jarnow"><span>Jar now</span><b class="${bal<0?'neg':''}">${bal<0?'−':''}${money(bal)}</b></div></div>`;
   h+='<div class="gtabs" role="tablist" aria-label="Current game">'+Array.from({length:S.games},(_,g)=>`<button role="tab" data-g="${g}" aria-selected="${g===lg}">Game ${g+1}${showScores?`<small>Team ${teamGame(g)}</small>`:''}</button>`).join('')+'</div>';
   h+=lanesBlock();
   h+=`<label class="autosw" style="margin:0 0 14px"><input type="checkbox" id="scoreSw" ${showScores?'checked':''}> Track scores and frames (needed for Stats)</label>`;
-  h+=S.bowlers.map(card).join('');
+  h+=lineupBlock();
+  h+=LU().map(card).join('');
   if(showScores)h+=`<label class="autosw"><input type="checkbox" id="autoSw" ${auto?'checked':''}> When scoring frames, jump to the next bowler after each frame</label>`;
   h+=board();
   h+=`<div class="row" style="margin-top:18px;justify-content:space-between"><button class="btn" id="finishLive">Finish night</button><button class="linkbtn danger" id="cancelLive">Discard this night</button></div>`;
@@ -895,7 +917,7 @@ function vHistory(){
 }
 function vTeam(){
   const list=S.bowlers.length?S.bowlers.map(b=>`<div class="bowler"><span>${esc(b.name)}</span><button class="btn danger" data-rm="${b.id}">Remove</button></div>`).join(''):'<p class="muted">No bowlers yet.</p>';
-  return `<h2 style="margin-top:4px">Bowlers</h2><p class="hint" style="margin-top:0">Bowlers appear in this order on bowl night.</p>${list}<div class="row" style="margin-top:14px"><input type="text" id="newName" placeholder="Bowler name" maxlength="30" style="flex:1;min-width:160px"><button class="btn" id="addB">Add bowler</button></div>`+
+  return `<h2 style="margin-top:4px">Roster</h2><p class="hint" style="margin-top:0">Everyone on the team, subs included. You pick who’s bowling each night on the Bowl night tab.</p>${list}<div class="row" style="margin-top:14px"><input type="text" id="newName" placeholder="Bowler name" maxlength="30" style="flex:1;min-width:160px"><button class="btn" id="addB">Add bowler</button></div>`+
     `<h2>League settings</h2><label class="field" style="max-width:220px">Games per night<input type="number" id="setGames" min="1" max="5" value="${S.games}"></label><p class="hint">Saves as soon as you change it. Jar fines and bounties are set on the Jar tab.</p>`+
     (S.pinRequired?`<h2>Team PIN</h2><p class="hint" style="margin-top:0">Your team requires a PIN to make changes. This phone asks for it the first time you save. Use this if the PIN changed.</p><button class="btn ghost" id="changePin">Change PIN on this phone</button>`:'');
 }
@@ -911,7 +933,24 @@ function wire(){
   if($('retry'))$('retry').onclick=load;
   if($('renameTeam'))$('renameTeam').onclick=()=>{const n=prompt('Team name',S.team);if(n&&n.trim())act({action:'settings',team:n.trim()},'Team renamed')};
   if($('quick'))$('quick').ontoggle=()=>{quickOpen=$('quick').open};
-  if($('startLive'))$('startLive').onclick=()=>{lg=0;padFor=null;act({action:'startNight',date:$('liveDate').value||today()},'Night started. Good luck!')};
+  if($('startLive'))$('startLive').onclick=()=>{
+    if(!pick||!pick.size){toast('Pick at least one bowler for tonight.');return}
+    lg=0;padFor=null;act({action:'startNight',date:$('liveDate').value||today(),lineup:[...pick]},'Night started. Good luck!').then(ok=>{if(ok)pick=null});
+  };
+  all('[data-pick]',b=>b.onclick=()=>{const id=b.dataset.pick;if(pick.has(id))pick.delete(id);else pick.add(id);render()});
+  all('[data-pickall]',b=>b.onclick=()=>{pick=new Set(S.bowlers.map(x=>x.id));render()});
+  all('[data-picklast]',b=>b.onclick=()=>{const last=S.nights.slice().sort((a,c)=>c.date.localeCompare(a.date)||c.created-a.created).find(n=>Array.isArray(n.lineup));if(last){pick=new Set(last.lineup.filter(id=>S.bowlers.some(x=>x.id===id)));render()}});
+  if($('lineupBox'))$('lineupBox').ontoggle=()=>{openNotes.lineup=$('lineupBox').open};
+  all('[data-lu]',b=>b.onclick=()=>{
+    const id=b.dataset.lu,on=LU().map(x=>x.id);
+    let next;
+    if(on.includes(id)){
+      if(on.length===1){toast('Keep at least one bowler in tonight’s lineup.');return}
+      if(hasTonight(id)&&!confirm(`${nameOf(id)} already has scores or jar entries tonight. Sit them out? Their entries won’t count unless you add them back.`))return;
+      next=on.filter(x=>x!==id);if(padFor===id)padFor=null;
+    } else next=on.concat([id]);
+    act({action:'setLineup',lineup:next},on.includes(id)?`${nameOf(id)} is sitting out`:`${nameOf(id)} added to tonight`);
+  });
   if($('saveNight'))$('saveNight').onclick=()=>{
     const d=readDraft(),clean={};let bad=false;
     all('.grid input',inp=>{const v=inp.value.trim();const ok=v===''||(+v>=0&&+v<=300);inp.classList.toggle('bad',!ok);if(!ok)bad=true});
@@ -967,7 +1006,7 @@ function wire(){
   all('[data-undojar]',b=>b.onclick=()=>{const e=liveJar().find(x=>x.id===b.dataset.undojar);if(e)removeJar(e)});
   if($('finishLive'))$('finishLive').onclick=async()=>{
     clearTimeout(flushT);await flush();
-    const inc=[];S.bowlers.forEach(b=>{for(let g=0;g<S.games;g++){const r=getRolls(b.id,g);if(r.length&&!nextBall(r).done)inc.push(b.name+' G'+(g+1))}});
+    const inc=[];LU().forEach(b=>{for(let g=0;g<S.games;g++){const r=getRolls(b.id,g);if(r.length&&!nextBall(r).done)inc.push(b.name+' G'+(g+1))}});
     if(!confirm(inc.length?`These frame-by-frame games aren’t finished and won’t count: ${inc.join(', ')}. Finish the night anyway?`:'Finish the night and add it to the standings?'))return;
     if(await act({action:'finishNight'},'Night saved')){lg=0;padFor=null;view='standings';render()}
   };
