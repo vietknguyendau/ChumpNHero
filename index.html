@@ -234,6 +234,49 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .seg{display:inline-flex;border:2px solid var(--line);border-radius:10px;overflow:hidden}
 .seg button{border:0;background:transparent;color:var(--muted);font-weight:800;padding:8px 12px;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+
+/* v8: pin deck, stats, notes */
+.entryseg{margin-bottom:12px}
+.deck{display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px 0}
+.drow{display:flex;gap:10px;justify-content:center}
+.pin{width:52px;height:52px;border-radius:50%;font:800 1.05rem Figtree,system-ui,sans-serif;cursor:pointer;touch-action:manipulation;border:2px dashed var(--line);background:transparent;color:var(--muted);transition:transform .08s}
+.pin:active:not(:disabled){transform:scale(.92)}
+.pin.up{background:var(--pin);color:#141A33;border:2px solid var(--ink);box-shadow:inset 0 -6px 0 rgba(215,38,61,.85)}
+.pin.gone{border:2px solid transparent;background:var(--line);opacity:.35;cursor:default}
+.deckinfo{display:flex;justify-content:space-between;align-items:center;margin:10px 0 8px;font-size:.9rem;min-height:28px}
+.leave{font-weight:800;border-radius:8px;padding:3px 9px;background:var(--surface);border:2px solid var(--line)}
+.leave.split{border-color:var(--gold);color:var(--gold)}
+.leave.big{background:var(--red);border-color:var(--red);color:#fff}
+.deckbtns{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:8px}
+.deckbtns .btn{padding:12px 8px}
+.jb.auto{opacity:.55;cursor:default}
+.jb.auto .ja{color:var(--muted)!important;font-weight:800}
+.splitmk{font-style:normal;display:inline-flex;align-items:center;justify-content:center;width:1.35em;height:1.35em;border:1.5px solid var(--red);border-radius:50%;color:var(--red)}
+.heads{margin:0 0 4px;font-size:.88rem;background:var(--goldSoft);border-radius:10px;padding:8px 10px}
+.heads b{color:var(--gold);margin-right:4px}
+details.notes,details.lanesbox{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+details.lanesbox{border:2px solid var(--line);border-radius:14px;padding:10px 12px;margin:0 0 12px;background:var(--surface)}
+details.notes summary,details.lanesbox summary{font-size:.92rem}
+.nsum{display:block;font-weight:600;color:var(--muted);font-size:.82rem;margin-top:2px}
+.ngrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.ngrid .field,.ngrid input,details.notes input,details.lanesbox input{min-width:0;width:100%}
+details *,details *::before,details *::after{box-sizing:border-box}
+.ngrid input{padding:9px 10px}
+.stats4{grid-template-columns:repeat(4,1fr)}
+.stats4 div{padding:10px 8px}
+.stats4 b{font-size:1.15rem}
+.alerts{display:flex;flex-direction:column;gap:8px}
+.alert{margin:0;border-left:4px solid var(--red);background:var(--redSoft);border-radius:0 10px 10px 0;padding:10px 12px;font-size:.92rem}
+.heat{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 0;border:2px solid var(--line);border-radius:16px;background:var(--surface)}
+.hpin{width:62px;height:62px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;border:2px solid transparent}
+.hpin b{font-size:.72rem;color:var(--muted)}
+.hpin span{font-weight:800;font-size:.95rem}
+.hpin small{font-size:.65rem;color:var(--muted)}
+.hpin.good{background:var(--tealSoft);border-color:var(--teal)}
+.hpin.ok{background:var(--goldSoft);border-color:var(--gold)}
+.hpin.bad{background:var(--redSoft);border-color:var(--red)}
+.hpin.na{border:2px dashed var(--line)}
+@media (max-width:380px){.pin{width:46px;height:46px}.hpin{width:56px;height:56px}.drow{gap:8px}}
 </style>
 </head>
 <body>
@@ -256,11 +299,12 @@ FINES.forEach(r=>r.fine=true);BOUNTIES.forEach(r=>r.fine=false);
 const EXTRA=[{k:'chump',label:'Chump of the game (added when the night is saved)',short:'Chumps',fine:true},{k:'buyin',label:'Buy-in per bowler before Game 1',short:'Buy-ins',fine:true,buyin:true}];
 const RULES=[...FINES,...BOUNTIES,...EXTRA];
 const RULE=Object.fromEntries(RULES.map(r=>[r.k,r]));
-const VIEWS=['tonight','standings','jar','history','team'];
+const VIEWS=['tonight','standings','stats','jar','history','team'];
 let view=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'tonight';
 let loaded=false,loadError=false,busy=false,draft=null,quickOpen=false,editJar=false,newFine=true;
 let lg=0,sel=null,padFor=null,ov={},ver=0,flushing=false,flushT=null,pendingJar=[],removedJar={};
-let auto=false,showScores=false;try{auto=localStorage.getItem('ch-auto')==='1';showScores=localStorage.getItem('ch-scores')==='1'}catch(e){}
+let auto=false,showScores=false,deck=false,deckUp=new Set(),openNotes={},statsFor=null;
+try{auto=localStorage.getItem('ch-auto')==='1';showScores=localStorage.getItem('ch-scores')==='1';deck=localStorage.getItem('ch-deck')==='1'}catch(e){}
 const root=document.getElementById('root');
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -318,6 +362,50 @@ function scoreGame(r){
   return {frames:fr,total:cum,complete,thru:fr.filter(f=>f.c!==null).length};
 }
 
+// ---- Pin deck ----
+// A leave is a 10-bit mask of pins still standing: bit (p-1) set = pin p standing.
+const ALL_PINS=1023;
+const PIN_ROWS=[[7,8,9,10],[4,5,6],[2,3],[1]];
+const ADJ={1:[2,3],2:[1,3,4,5],3:[1,2,5,6],4:[2,5,7,8],5:[2,3,4,6,8,9],6:[3,5,9,10],7:[4,8],8:[4,5,7,9],9:[5,6,8,10],10:[6,9]};
+const bit=p=>1<<(p-1);
+const pinsOf=m=>{const o=[];for(let p=1;p<=10;p++)if(m&bit(p))o.push(p);return o};
+const maskOf=ps=>ps.reduce((m,p)=>m|bit(p),0);
+const popcount=m=>pinsOf(m).length;
+// Split: headpin down, 2+ pins standing, and the standing pins aren't all touching.
+function isSplit(m){
+  if(m&bit(1))return false;
+  const ps=pinsOf(m);if(ps.length<2)return false;
+  const seen=new Set([ps[0]]),stack=[ps[0]];
+  while(stack.length){const p=stack.pop();ADJ[p].forEach(q=>{if((m&bit(q))&&!seen.has(q)){seen.add(q);stack.push(q)}})}
+  return seen.size<ps.length;
+}
+const BIG={'7-10':maskOf([7,10]),'Greek Church':maskOf([4,6,7,9,10]),'Greek Church ':maskOf([4,6,7,8,10]),'4-6-7-10':maskOf([4,6,7,10])};
+function bigKind(m){for(const k in BIG)if(BIG[k]===m)return k.trim();return null}
+const leaveName=m=>m===0?'clean':pinsOf(m).join('-');
+// Rolls of the 10th frame.
+function tenthRolls(r){let i=0;for(let f=0;f<9&&i<r.length;f++)i+=r[i]===10?1:2;return r.slice(i)}
+function clean10(r){const t=tenthRolls(r);if(t.length<2)return false;if(t[0]===10)return t[1]===10?t.length===3:t.length===3&&t[1]+t[2]===10;return t[0]+t[1]===10}
+// Jar events the app can detect from the rolls (and pin leaves, when the pin deck was used).
+function autoJar(r,L){
+  L=L||[];const ev=[];let streak=0;
+  for(let i=0;i<r.length;i++){
+    const st=nextBall(r.slice(0,i)).max,first=st===10;
+    if(first){
+      if(r[i]===0)ev.push({k:'gutter1',i});
+      if(r[i]===10){streak++;if(streak===4)ev.push({k:'fourBagger',i})}else streak=0;
+      const m=L[i];if(typeof m==='number'&&r[i]<10){const b=bigKind(m);if(b==='7-10'||b==='Greek Church')ev.push({k:'splitCaused',i})}
+    }else{
+      if(st===1&&r[i]===0)ev.push({k:'openSingle',i});
+      else if(r[i]===0)ev.push({k:'gutter2',i});
+      const m=L[i-1];if(typeof m==='number'&&isSplit(m)&&r[i]===st)ev.push({k:bigKind(m)?'bigSplitConv':'splitConv',i});
+    }
+  }
+  if(nextBall(r).done&&clean10(r))ev.push({k:'clutch10',i:r.length-1});
+  return ev;
+}
+// Which frame each roll belongs to.
+function frameOfRolls(r){const out=[];let i=0;for(let f=0;f<9&&i<r.length;f++){if(r[i]===10){out[i]=f;i++}else{out[i]=f;if(i+1<r.length)out[i+1]=f;i+=2}}for(;i<r.length;i++)out[i]=9;return out}
+
 
 // ---- server ----
 async function post(payload,retried){
@@ -350,28 +438,34 @@ async function load(){
 }
 
 // ---- live frames (saved per bowler + game) ----
-function getLive(b,g){const k=b+':'+g;if(ov[k])return ov[k];const x=S.live&&S.live.rolls[k];if(!x)return {rolls:[]};return Array.isArray(x)?{rolls:x}:{rolls:x.r||[]}}
+function getLive(b,g){const k=b+':'+g;if(ov[k])return ov[k];const x=S.live&&S.live.rolls[k];if(!x)return {rolls:[],L:[]};return Array.isArray(x)?{rolls:x,L:[]}:{rolls:x.r||[],L:x.L||[]}}
 const getRolls=(b,g)=>getLive(b,g).rolls;
-function setRolls(b,g,r){ov[b+':'+g]={rolls:r,ver:++ver,dirty:true};clearTimeout(flushT);flushT=setTimeout(flush,250)}
+const getLeaves=(b,g)=>getLive(b,g).L||[];
+function setRolls(b,g,r,L){L=(L||getLeaves(b,g)).slice(0,r.length);ov[b+':'+g]={rolls:r,L,ver:++ver,dirty:true};clearTimeout(flushT);flushT=setTimeout(flush,250)}
 async function flush(){
   if(flushing)return;flushing=true;
   for(;;){
     const k=Object.keys(ov).find(k=>ov[k].dirty);if(!k)break;
     const o=ov[k];o.dirty=false;const v=o.ver;const [b,g]=k.split(':');
-    const x=await post({action:'setRolls',bowlerId:b,game:+g,rolls:o.rolls});
+    const x=await post({action:'setRolls',bowlerId:b,game:+g,rolls:o.rolls,leaves:o.L});
     if(x.ok){S=x.d;if(ov[k]&&ov[k].ver===v)delete ov[k]}
     else{toast(x.d.error||'Could not save that roll.');delete ov[k];break}
   }
   flushing=false;if(!typing())render();
 }
 function advance(){
-  const ids=S.bowlers.map(b=>b.id);const i=ids.indexOf(sel);
+  deckUp=new Set();const ids=S.bowlers.map(b=>b.id);const i=ids.indexOf(sel);
   for(let s=1;s<=ids.length;s++){const id=ids[(i+s)%ids.length];if(!nextBall(getRolls(id,lg)).done){sel=padFor=id;return}}
 }
-function roll(n){
+function roll(n,mask){
   const r=getRolls(sel,lg).slice(),nb=nextBall(r);
   if(nb.done||n>nb.max)return;
-  r.push(n);setRolls(sel,lg,r);
+  const before=autoJar(r,getLeaves(sel,lg)).length;
+  const L=getLeaves(sel,lg).slice(0,r.length);
+  r.push(n);L[r.length-1]=typeof mask==='number'?mask:null;deckUp=new Set();
+  setRolls(sel,lg,r,L);
+  const fresh=autoJar(r,L).slice(before).filter(e=>amt(e.k)>0||(e.k==='bigSplitConv'&&S.bigSplitPot));
+  if(fresh.length)toast(fresh.map(e=>{const R=ruleOf(e.k);return `${R.short}! ${R.fine?'Pay':'Collect'} ${e.k==='bigSplitConv'&&S.bigSplitPot?'the jar':money(amt(e.k))}`}).join('  ·  ')+' (auto)');
   const after=nextBall(r);
   if(auto&&(after.done||after.frame!==nb.frame)){advance();render();const c=$('card-'+sel);if(c)c.scrollIntoView({behavior:'smooth',block:'start'});return}
   render();
@@ -391,7 +485,30 @@ const amt=k=>{if(RULE[k])return +((S.jar||{})[k])||0;const c=customs().find(x=>x
 const isIn=e=>e.fine!==undefined?e.fine:ruleOf(e.k).fine;
 const allFines=()=>FINES.concat(customs().filter(x=>x.fine));
 const allBounties=()=>BOUNTIES.concat(customs().filter(x=>!x.fine));
-function liveJar(){if(!S.live)return [];return (S.live.jar||[]).filter(e=>!removedJar[e.id]).concat(pendingJar)}
+const evSum=evs=>evs.reduce((s,e)=>s+(isIn(e)?e.amt:-e.amt),0);
+function autoLive(){
+  const ev=[];if(!S.live)return ev;
+  S.bowlers.forEach(b=>{for(let g=0;g<S.games;g++){const r=getRolls(b.id,g);if(!r.length)continue;
+    autoJar(r,getLeaves(b.id,g)).forEach(a=>ev.push({id:`auto:${b.id}:${g}:${a.i}:${a.k}`,b:b.id,k:a.k,g,i:a.i,amt:amt(a.k),at:0,auto:true}))}});
+  return ev;
+}
+function liveJar(){
+  if(!S.live)return [];
+  const man=(S.live.jar||[]).filter(e=>!removedJar[e.id]).concat(pendingJar);
+  let au=autoLive();
+  if(S.bigSplitPot&&au.some(e=>e.k==='bigSplitConv')){
+    const past=[];S.nights.forEach(n=>(n.jarEvents||[]).forEach(e=>past.push(e)));
+    let base=evSum(past)+evSum(man)+evSum(au.filter(e=>e.k!=='bigSplitConv'));
+    au.forEach(e=>{if(e.k==='bigSplitConv'){e.amt=Math.max(0,base);base-=e.amt}});
+  }
+  return man.concat(au.filter(e=>e.amt>0));
+}
+function autoSet(b){
+  const r=getRolls(b,lg);if(!r.length)return new Set();
+  const s=new Set(['gutter1','gutter2','openSingle','fourBagger','clutch10']);
+  if(getLeaves(b,lg).some(x=>typeof x==='number'))['splitCaused','splitConv','bigSplitConv'].forEach(k=>s.add(k));
+  return s;
+}
 function allEvents(includeLive){
   const ev=[];S.nights.forEach(n=>(n.jarEvents||[]).forEach(e=>ev.push(e)));
   if(includeLive)liveJar().forEach(e=>ev.push(e));return ev;
@@ -415,6 +532,118 @@ async function removeJar(e){
   const x=await post({action:'removeJar',id:e.id});
   if(x.ok)S=x.d;else toast(x.d.error||'Could not undo that.');
   delete removedJar[e.id];if(!typing())render();
+}
+
+
+// ---- Lines, lanes & notes ----
+const noteOf=k=>(S.live&&S.live.notes&&S.live.notes[k])||{};
+const has=v=>v!==''&&v!==undefined&&v!==null;
+function lineSummary(n){const p=[];if(has(n.stand))p.push('stand '+n.stand);if(has(n.target))p.push('target '+n.target);if(has(n.bp))p.push('breakpoint '+n.bp);if(n.ball)p.push(n.ball);return p.join(', ')}
+function moveText(prev,cur){
+  const d=(a,b)=>has(a)&&has(b)?b-a:null,f=(x,l)=>x===null||x===0?'':`${l} ${x>0?'+':'−'}${Math.abs(x)}`;
+  return [f(d(prev.stand,cur.stand),'feet'),f(d(prev.target,cur.target),'target')].filter(Boolean).join(', ');
+}
+function notesBlock(b){
+  const k=b.id+':'+lg,n=noteOf(k),prev=lg>0?noteOf(b.id+':'+(lg-1)):{};
+  const sum=lineSummary(n),mv=lg>0?moveText(prev,n):'';
+  const ph=(f,def)=>has(prev[f])?`G${lg}: ${prev[f]}`:def;
+  const numIn=(f,label,def)=>`<label class="field">${label}<input type="number" inputmode="decimal" min="1" max="39" step="0.5" data-nf="${f}" data-nk="${k}" value="${has(n[f])?n[f]:''}" placeholder="${esc(ph(f,def))}"></label>`;
+  return `<details class="notes" data-notes="${b.id}" ${openNotes[b.id]?'open':''}><summary>Line &amp; notes, game ${lg+1}${sum?`<span class="nsum">${esc(sum)}${mv?` (${esc(mv)})`:''}</span>`:''}</summary>
+  <div class="ngrid">${numIn('stand','Stand (board)','e.g. 25')}${numIn('target','Target at arrows','e.g. 12')}${numIn('bp','Breakpoint board','e.g. 7')}
+  <label class="field">Ball<input type="text" maxlength="30" data-nf="ball" data-nk="${k}" value="${esc(n.ball||'')}" placeholder="${esc(ph('ball','Ball name'))}"></label></div>
+  <label class="field" style="margin-top:8px">Adjustment note<input type="text" maxlength="200" data-nf="note" data-nk="${k}" value="${esc(n.note||'')}" placeholder="e.g. Moved 2 left, ball checking up early"></label></details>`;
+}
+function lanesBlock(){
+  const ln=noteOf('lanes'),pair=ln.pair||['',''],nt=ln.notes||{},set=has(pair[0])&&has(pair[1]);
+  const laneIn=(i,ph)=>`<label class="field">${i?'Second':'First'} lane<input type="number" inputmode="numeric" min="1" max="200" data-lane="${i}" value="${has(pair[i])?pair[i]:''}" placeholder="${ph}"></label>`;
+  return `<details class="lanesbox" id="lanesBox" ${openNotes.lanes?'open':''}><summary>${set?`Lanes ${pair[0]} &amp; ${pair[1]}`:'Set your lanes'}<span class="nsum">${set&&(nt[pair[0]]||nt[pair[1]])?'Lane notes saved':'Lane notes and lane-by-lane stats'}</span></summary>
+  <div class="ngrid">${laneIn(0,'e.g. 17')}${laneIn(1,'e.g. 18')}</div>
+  ${set?pair.map(l=>`<label class="field" style="margin-top:8px">Lane ${l} notes<input type="text" maxlength="200" data-lanenote="${l}" value="${esc(nt[l]||'')}" placeholder="e.g. hooking early, tighter backend"></label>`).join(''):''}
+  <p class="hint">Game 1 starts on the first lane. Lanes alternate every frame and swap each game.</p></details>`;
+}
+const laneFor=(pair,g,f)=>pair&&has(pair[0])&&has(pair[1])?((f+g)%2===0?pair[0]:pair[1]):null;
+
+// ---- Stats ----
+// Every rack (fresh set of pins) a bowler has faced, oldest first.
+function bowlerRacks(id){
+  const out=[];
+  const add=(r,L,g,pair,date)=>{const fr=frameOfRolls(r);L=L||[];
+    for(let i=0;i<r.length;i++){
+      if(nextBall(r.slice(0,i)).max!==10)continue;
+      const x={first:r[i],strike:r[i]===10,leave:typeof L[i]==='number'?L[i]:(r[i]===10?0:null),standing:10-r[i],lane:laneFor(pair,g,fr[i]),date};
+      if(r[i]<10&&i+1<r.length){x.made=r[i+1]===10-r[i]}
+      out.push(x);
+    }};
+  S.nights.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.created-b.created).forEach(n=>{
+    if(!n.rolls||!n.rolls[id])return;const pair=n.notes&&n.notes.lanes&&n.notes.lanes.pair;
+    n.rolls[id].forEach((r,g)=>{if(r)add(r,n.leaves&&n.leaves[id]&&n.leaves[id][g],g,pair,n.date)});
+  });
+  if(S.live){const pair=noteOf('lanes').pair;for(let g=0;g<S.games;g++){const r=getRolls(id,g);if(r.length)add(r,getLeaves(id,g),g,pair,S.live.date)}}
+  return out;
+}
+const leaveLabel=m=>{const b=bigKind(m);if(b)return b;return popcount(m)===1?pinsOf(m)[0]+'-pin':leaveName(m)};
+function statsOf(rk){
+  const att=rk.filter(x=>x.made!==undefined),known=x=>x.leave!==null&&x.leave!==undefined;
+  const split=x=>known(x)&&isSplit(x.leave);
+  const single=att.filter(x=>x.standing===1),splits=att.filter(split),multi=att.filter(x=>x.standing>=2&&!split(x));
+  const perPin={};for(let p=1;p<=10;p++)perPin[p]={att:0,made:0,left:0};
+  single.forEach(x=>{if(!known(x))return;const p=pinsOf(x.leave)[0];perPin[p].att++;if(x.made)perPin[p].made++});
+  const leaves={};rk.forEach(x=>{if(!x.strike&&known(x)){leaves[x.leave]=(leaves[x.leave]||0)+1;pinsOf(x.leave).forEach(p=>perPin[p].left++)}});
+  const byLane={};rk.forEach(x=>{if(!x.lane)return;const l=byLane[x.lane]=byLane[x.lane]||{fb:0,st:0,att:0,made:0};l.fb++;if(x.strike)l.st++;if(x.made!==undefined){l.att++;if(x.made)l.made++}});
+  const c=a=>({att:a.length,made:a.filter(x=>x.made).length});
+  return {fb:rk.length,strikes:rk.filter(x=>x.strike).length,spares:c(att),single:c(single),multi:c(multi),splits:c(splits),
+    splitsLeft:rk.filter(x=>!x.strike&&split(x)).length,perPin,leaves,byLane,deckRacks:rk.filter(x=>!x.strike&&known(x)).length};
+}
+function alertsOf(rk){
+  const out=[],att=rk.filter(x=>x.made!==undefined);
+  const laneNote=xs=>{const c={};xs.forEach(x=>{if(x.lane)c[x.lane]=(c[x.lane]||0)+1});const t=Object.entries(c).sort((a,b)=>b[1]-a[1])[0];if(!t||t[1]<3)return '';return t[1]===xs.length?` on lane ${t[0]}`:`, ${t[1]} of them on lane ${t[0]}`};
+  for(let p=1;p<=10;p++){
+    const a=att.filter(x=>x.standing===1&&x.leave===bit(p)).slice(-6),miss=a.filter(x=>!x.made);
+    if(a.length>=4&&miss.length>=3)out.push({sev:1+miss.length/a.length,text:`Missed ${miss.length} of the last ${a.length} single ${p}-pin spares${laneNote(miss)}.`});
+  }
+  if(!out.length){const a=att.filter(x=>x.standing===1).slice(-8),miss=a.filter(x=>!x.made);if(a.length>=5&&miss.length>=3)out.push({sev:1+miss.length/a.length,text:`Missed ${miss.length} of the last ${a.length} single-pin spares${laneNote(miss)}.`})}
+  const recent=rk.filter(x=>!x.strike&&x.leave!==null).slice(-10);
+  if(recent.length>=6){const c={};recent.forEach(x=>c[x.leave]=(c[x.leave]||0)+1);const [m,n]=Object.entries(c).sort((a,b)=>b[1]-a[1])[0];if(n>=4)out.push({sev:n/recent.length,text:`Left the ${leaveLabel(+m)} on ${n} of the last ${recent.length} non-strike first balls. Might be time for a move.`})}
+  const fb=rk.filter(x=>x.leave!==null).slice(-12);
+  if(fb.length>=8){const sp=fb.filter(x=>!x.strike&&isSplit(x.leave)).length;if(sp>=3)out.push({sev:sp/fb.length,text:`Left ${sp} splits in the last ${fb.length} first balls.`})}
+  const mp=att.filter(x=>x.standing>=2&&!(x.leave!==null&&isSplit(x.leave))).slice(-8),mm=mp.filter(x=>!x.made);
+  if(mp.length>=5&&mm.length>=4)out.push({sev:mm.length/mp.length,text:`Missed ${mm.length} of the last ${mp.length} multi-pin spares${laneNote(mm)}.`});
+  const ls=Object.entries(statsOf(rk.slice(-40)).byLane).filter(([,v])=>v.fb>=10);
+  if(ls.length===2){const [[a,A],[b,B]]=ls,ra=A.st/A.fb,rb=B.st/B.fb;if(Math.abs(ra-rb)>=.25){const [hi,lo]=ra>rb?[a,b]:[b,a];out.push({sev:.4,text:`Striking a lot more on lane ${hi} (${Math.round(Math.max(ra,rb)*100)}%) than lane ${lo} (${Math.round(Math.min(ra,rb)*100)}%).`})}}
+  return out.sort((a,b)=>b.sev-a.sev).slice(0,4);
+}
+const pct=(m,a)=>a?Math.round(m/a*100)+'%':'–';
+function heatmap(pp){
+  return '<div class="heat" role="img" aria-label="Single-pin spare conversion by pin">'+PIN_ROWS.map(row=>'<div class="drow">'+row.map(p=>{const x=pp[p];const r=x.att?x.made/x.att:null;const cls=r===null?'na':r>=.8?'good':r>=.5?'ok':'bad';
+    return `<div class="hpin ${cls}"><b>${p}</b><span>${x.att?Math.round(r*100)+'%':'–'}</span><small>${x.att?x.made+'/'+x.att:''}</small></div>`}).join('')+'</div>').join('')+'</div>';
+}
+function vStats(){
+  if(!S.bowlers.length)return '<div class="empty"><p><b>Add bowlers first.</b></p></div>';
+  if(!statsFor||!S.bowlers.some(b=>b.id===statsFor))statsFor=S.bowlers[0].id;
+  let h='<div class="chips" style="margin-top:4px">'+S.bowlers.map(b=>`<button class="chip" data-stat="${b.id}" aria-pressed="${b.id===statsFor}">${esc(b.name)}</button>`).join('')+'</div>';
+  const rk=bowlerRacks(statsFor);
+  if(!rk.length)return h+'<div class="empty"><p><b>No frames yet.</b></p><p>Stats come from games scored frame by frame. On bowl night, turn on “Track scores too” and score a game by frames. Use the pin deck for split and pin-by-pin stats.</p></div>';
+  const s=statsOf(rk),al=alertsOf(rk);
+  h+=`<div class="stats stats4"><div><b>${pct(s.strikes,s.fb)}</b><span>Strikes</span></div><div><b>${pct(s.spares.made,s.spares.att)}</b><span>Spares</span></div><div><b>${pct(s.single.made,s.single.att)}</b><span>Single-pin</span></div><div><b>${pct(s.splits.made,s.splits.att)}</b><span>Splits</span></div></div>`;
+  h+=`<h2>Trouble spots</h2>`+(al.length?`<div class="alerts">${al.map(a=>`<p class="alert">${esc(a.text)}</p>`).join('')}</div>`:'<p class="muted">Nothing worrying right now. Alerts show up when misses start repeating.</p>');
+  h+=`<h2>Spare conversion</h2><div class="tablewrap"><table><thead><tr><th>Leave</th><th>Made</th><th>Tries</th><th>Rate</th></tr></thead><tbody>`+
+    [['Single pin',s.single],['Multi-pin',s.multi],['Splits',s.splits],['All spares',s.spares]].map(([l,x])=>`<tr><td class="name">${l}</td><td>${x.made}</td><td>${x.att}</td><td><b>${pct(x.made,x.att)}</b></td></tr>`).join('')+'</tbody></table></div>';
+  h+=`<h2>Single-pin spares by pin</h2>${heatmap(s.perPin)}<p class="hint">Teal is 80% or better, gold is 50 to 79%, red is under 50%. Needs the pin deck.</p>`;
+  const top=Object.entries(s.leaves).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  if(top.length)h+=`<h2>Most common leaves</h2><div class="tablewrap"><table><tbody>${top.map(([m,n])=>`<tr><td class="name">${esc(leaveLabel(+m))}${isSplit(+m)?' <span class="tag c">split</span>':''}</td><td>${n}×</td></tr>`).join('')}</tbody></table></div>`;
+  const lanes=Object.entries(s.byLane);
+  if(lanes.length)h+=`<h2>By lane</h2><div class="tablewrap"><table><thead><tr><th>Lane</th><th>Strikes</th><th>Spares</th><th>Frames</th></tr></thead><tbody>${lanes.map(([l,v])=>`<tr><td class="name">Lane ${l}</td><td>${pct(v.st,v.fb)}</td><td>${pct(v.made,v.att)}</td><td>${v.fb}</td></tr>`).join('')}</tbody></table></div>`;
+  // line journal
+  const nights=S.nights.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);
+  const jr=[];
+  const lineRows=(notes,date,live)=>{const rows=[];for(let g=0;g<S.games;g++){const x=notes[statsFor+':'+g];if(!x)continue;const s1=lineSummary(x),mv=g>0&&notes[statsFor+':'+(g-1)]?moveText(notes[statsFor+':'+(g-1)],x):'';if(s1||x.note)rows.push(`<p class="jarline"><b>G${g+1}</b> ${esc(s1)}${mv?` <span class="muted">(${esc(mv)})</span>`:''}${x.note?`<br><span class="muted">${esc(x.note)}</span>`:''}</p>`)}
+    const ln=notes.lanes;if(ln&&ln.notes)Object.entries(ln.notes).forEach(([l,t])=>{if(t)rows.push(`<p class="jarline"><b>Lane ${l}</b> <span class="muted">${esc(t)}</span></p>`)});
+    if(rows.length)jr.push(`<div class="night"><span class="date">${esc(fmtDate(date))}${live?' (tonight)':''}</span>${rows.join('')}</div>`)};
+  if(S.live)lineRows(S.live.notes||{},S.live.date,true);
+  nights.slice(0,6).forEach(n=>lineRows(n.notes||{},n.date));
+  if(jr.length)h+=`<h2>Line journal</h2>${jr.join('')}`;
+  if(!s.deckRacks)h+='<p class="hint">Tip: score with the pin deck to unlock split stats, the pin heatmap and leave tracking.</p>';
+  return h;
 }
 
 // ---- Chump & Hero ----
@@ -443,9 +672,9 @@ const pinSvg='<svg viewBox="0 0 40 80" aria-hidden="true"><path fill="currentCol
 // ---- views ----
 function render(){
   let h=`<header class="top"><div class="brand">${LOGO}<div><h1>Chump <span class="amp">&amp;</span> Hero</h1><button class="teamname" id="renameTeam" aria-label="Rename team">${esc(S.team)}</button></div></div><div class="mode">${loaded?(S.live?'<span class="dot"></span>Live night':'Shared with your team'):loadError?'Can’t reach the server':'Loading…'}</div></header>`;
-  h+='<nav class="tabs" role="tablist">'+[['tonight','Bowl night'],['standings','Standings'],['jar','Jar'],['history','History'],['team','Team']].map(t=>`<button role="tab" data-view="${t[0]}" aria-selected="${view===t[0]}">${t[1]}</button>`).join('')+'</nav>';
+  h+='<nav class="tabs" role="tablist">'+[['tonight','Bowl night'],['standings','Standings'],['stats','Stats'],['jar','Jar'],['history','History'],['team','Team']].map(t=>`<button role="tab" data-view="${t[0]}" aria-selected="${view===t[0]}">${t[1]}</button>`).join('')+'</nav>';
   if(!loaded)h+=loadError?'<div class="empty"><p><b>Couldn’t load your team’s data.</b></p><p>Check your connection, or make sure the database is connected in Vercel.</p><button class="btn" id="retry">Try again</button></div>':'<div class="empty">Loading scores…</div>';
-  else h+=view==='tonight'?vTonight():view==='standings'?vStandings():view==='jar'?vJar():view==='history'?vHistory():vTeam();
+  else h+=view==='tonight'?vTonight():view==='standings'?vStandings():view==='stats'?vStats():view==='jar'?vJar():view==='history'?vHistory():vTeam();
   root.innerHTML=h;wire();
 }
 function spotlight(){
@@ -471,11 +700,35 @@ function totalsForm(){
   S.bowlers.forEach(b=>{g+=`<div class="bn">${esc(b.name)}</div>`;for(let i=0;i<S.games;i++){const v=(d.scores[b.id]||[])[i];g+=`<input type="number" inputmode="numeric" min="0" max="300" data-b="${b.id}" data-g="${i}" value="${typeof v==='number'?v:''}" aria-label="${esc(b.name)} game ${i+1}">`}});
   return `<div class="lane" style="margin-top:12px"><label class="field" style="margin-bottom:14px">Date<input type="date" id="nDate" value="${esc(d.date)}"></label>${g}</div><p class="hint">Leave a box empty if someone sat that game out.</p><div class="row"><button class="btn" id="saveNight">Save scores</button></div>`;
 }
-function sheet(sc,nb,small){
+// Where each roll's mark sits on the sheet: frame f, box p.
+function rollPos(r){const out=[];let i=0;for(let f=0;f<9&&i<r.length;f++){if(r[i]===10){out[i]={f,p:1};i++}else{out[i]={f,p:0};if(i+1<r.length)out[i+1]={f,p:1};i+=2}}for(let k=0;i<r.length;k++,i++)out[i]={f:9,p:k};return out}
+function sheet(sc,nb,small,r,L){
+  const circ={};
+  if(r&&L){const pos=rollPos(r);L.forEach((m,i)=>{if(typeof m==='number'&&r[i]<10&&nextBall(r.slice(0,i)).max===10&&isSplit(m)&&pos[i])circ[pos[i].f+':'+pos[i].p]=1})}
   return `<div class="frames${small?' small':''}">`+sc.frames.map((f,i)=>{
     const m=f.m.slice();while(m.length<(i===9?3:2))m.push('');
-    return `<div class="fr${nb&&!nb.done&&nb.frame===i?' cur':''}"><div class="no">${i+1}</div><div class="mk">${m.map(x=>`<span class="${x==='X'?'x':x==='/'?'sp':''}">${x}</span>`).join('')}</div><div class="cum">${f.c===null?'':f.c}</div></div>`;
+    return `<div class="fr${nb&&!nb.done&&nb.frame===i?' cur':''}"><div class="no">${i+1}</div><div class="mk">${m.map((x,p)=>`<span class="${x==='X'?'x':x==='/'?'sp':''}">${circ[i+':'+p]?`<i class="splitmk">${x}</i>`:x}</span>`).join('')}</div><div class="cum">${f.c===null?'':f.c}</div></div>`;
   }).join('')+'</div>';
+}
+function availMask(r,L){const nb=nextBall(r);if(nb.done)return null;if(nb.max===10)return ALL_PINS;const p=L[r.length-1];return typeof p==='number'?p:null}
+function deckView(nb,r,L){
+  if(nb.done)return pad(nb,r);
+  const av=availMask(r,L);
+  if(av===null)return `<p class="hint" style="margin:0 0 8px">This frame’s first ball was entered on the number pad, so finish the frame there.</p>`+pad(nb,r);
+  let up=0;deckUp.forEach(p=>{if(av&bit(p))up|=bit(p)});
+  const down=popcount(av)-popcount(up),first=nb.max===10;
+  let tri='<div class="deck" role="group" aria-label="Tap the pins still standing">';
+  PIN_ROWS.forEach(row=>{tri+='<div class="drow">'+row.map(p=>{const on=av&bit(p),st=up&bit(p);return `<button class="pin${on?(st?' up':' down'):' gone'}" data-pin="${p}" ${on?'':'disabled'} aria-pressed="${!!st}" aria-label="Pin ${p}${on?(st?', standing':', knocked down'):', already down'}">${p}</button>`}).join('')+'</div>'});
+  tri+='</div>';
+  let tag='';
+  if(first&&up){const bk=bigKind(up);tag=bk?`<span class="leave big">${bk}${bk==='4-6-7-10'?' split':''}</span>`:isSplit(up)?`<span class="leave split">${leaveName(up)} split</span>`:`<span class="leave">${popcount(up)===1?pinsOf(up)[0]+'-pin':leaveName(up)}</span>`}
+  const recLabel=first&&down===10?'Record strike':!first&&up===0?'Record spare':`Record ${down} down`;
+  return `<p class="hint" style="margin:0 0 8px">Tap the pins still standing, then record.</p>${tri}<div class="deckinfo">${tag||'<span></span>'}<span class="muted">${down} down, ${popcount(up)} standing</span></div>
+  <div class="deckbtns"><button class="btn" data-deckrec="1">${recLabel}</button><button class="btn ghost" data-deckall="none">${first?'Gutter':'Missed all'}</button><button class="btn ghost" data-deckall="all">${first?'Strike':'Spare'}</button></div>
+  <div class="row" style="margin-top:10px;justify-content:space-between"><button class="btn ghost" id="undo" ${r.length?'':'disabled'}>Undo</button>${auto?'<button class="linkbtn" id="nextB">Skip to next bowler</button>':''}</div>`;
+}
+function entry(nb,r,L){
+  return `<div class="seg entryseg" role="group" aria-label="How to enter rolls"><button data-deck="0" aria-pressed="${!deck}">Number pad</button><button data-deck="1" aria-pressed="${deck}">Pin deck</button></div>`+(deck?deckView(nb,r,L):pad(nb,r));
 }
 function pad(nb,r){
   if(nb.done)return `<div class="row" style="margin-top:12px"><button class="btn ghost" id="undo">Undo last roll</button>${auto?'<button class="btn" id="nextB">Next bowler</button>':''}</div>`;
@@ -489,7 +742,8 @@ function card(b){
   const evs=liveJar().filter(e=>e.b===b.id),J=bowlerJar(evs,b.id);
   let series=0;for(let g=0;g<S.games;g++){const x=gameScore(b.id,g);if(x)series+=x.v}
   const count=k=>evs.filter(e=>e.k===k).length;
-  const chip=R=>{const n=count(R.k),a=R.k==='bigSplitConv'&&S.bigSplitPot?'Pot':short$(amt(R.k));return `<button class="jb ${R.fine?'f':'w'}" data-add="${R.k}" data-b="${b.id}"${R.custom?' data-custom="1"':''}><span class="jl">${esc(R.short)}</span><span class="ja">${a}</span>${n?`<span class="jc">×${n}</span>`:''}</button>`};
+  const AU=autoSet(b.id);
+  const chip=R=>{const n=count(R.k),au=AU.has(R.k),a=au?'Auto':R.k==='bigSplitConv'&&S.bigSplitPot?'Pot':short$(amt(R.k));return `<button class="jb ${R.fine?'f':'w'}${au?' auto':''}" data-add="${R.k}" data-b="${b.id}"${au?' disabled title="Counted automatically from the frames"':''}><span class="jl">${esc(R.short)}</span><span class="ja">${a}</span>${n?`<span class="jc">×${n}</span>`:''}</button>`};
   const activeF=allFines().filter(R=>amt(R.k)>0),activeB=allBounties().filter(R=>amt(R.k)>0||(R.k==='bigSplitConv'&&S.bigSplitPot));
   let scores='<div class="gscores">';
   for(let g=0;g<S.games;g++){
@@ -500,23 +754,26 @@ function card(b){
   }
   scores+=`<div class="gs ser"><span class="gl">Series</span><b>${series||'–'}</b></div></div>`;
   let h=`<section class="bcard${padFor===b.id?' open':''}" id="card-${b.id}"><div class="bhead"><h3>${esc(b.name)}</h3><span class="bjar ${J.net>0?'pos':J.net<0?'neg':''}">${J.paid||J.won?smoney(J.net):'$0.00'}</span></div>`;
+  const al=alertsOf(bowlerRacks(b.id))[0];
+  if(al)h+=`<p class="heads"><b>Heads up</b> ${esc(al.text)}</p>`;
   h+=`<div class="jrow"><span class="jt">Fines</span><div class="jbs">${activeF.map(chip).join('')||'<span class="muted">All fines are off</span>'}</div></div>`;
   h+=`<div class="jrow"><span class="jt">Bounties</span><div class="jbs">${activeB.map(chip).join('')||'<span class="muted">All bounties are off</span>'}</div></div>`;
   if(!showScores){}
   else if(padFor===b.id){h+=`<div class="scorewrap">${scores}`;
-    const r=getRolls(b.id,lg),sc=scoreGame(r),nb=nextBall(r);
+    const r=getRolls(b.id,lg),L=getLeaves(b.id,lg),sc=scoreGame(r),nb=nextBall(r);
     const status=nb.done?`Game ${lg+1} final: ${sc.total}`:`Game ${lg+1}, frame ${nb.frame+1}, ball ${nb.ball+1}`+(nb.max<10?`. ${nb.max} standing`:'');
-    h+=`</div><div class="padwrap"><div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="muted">${status}</span><button class="linkbtn" id="closePad">Close frames</button></div>${sheet(sc,nb)}<div style="margin-top:10px">${pad(nb,r)}</div></div>`;
+    h+=`</div><div class="padwrap"><div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="muted">${status}</span><button class="linkbtn" id="closePad">Close frames</button></div>${sheet(sc,nb,false,r,L)}<div style="margin-top:10px">${entry(nb,r,L)}</div></div>`;
   } else {
     h+=`<div class="scorewrap">${scores}`;
     const hasTyped=S.live.totals&&typeof S.live.totals[b.id+':'+lg]==='number';
-    if(!hasTyped)h+=`<button class="linkbtn framesbtn" data-frames="${b.id}" data-fg="${lg}">Score game ${lg+1} frame by frame</button>`;
+    if(!hasTyped)h+=`<button class="linkbtn framesbtn" data-frames="${b.id}" data-fg="${lg}">${getRolls(b.id,lg).length?`Open game ${lg+1} frames`:`Score game ${lg+1} frame by frame`}</button>`;
     h+='</div>';
   }
-  const last=evs.slice().sort((a,b)=>b.at-a.at)[0];
+  const last=evs.filter(e=>!e.auto).sort((a,b)=>b.at-a.at)[0];
   const foot=[];
   if(amt('buyin')>0){const paidB=count('buyin');foot.push(paidB?`<span class="paidb">Bought in ${money(amt('buyin'))} ✓</span>`:`<button class="jb buy" data-add="buyin" data-b="${b.id}"><span class="jl">Buy-in</span><span class="ja">${money(amt('buyin'))}</span></button>`)}
   if(last)foot.push(`<button class="linkbtn" data-undojar="${last.id}">Undo ${esc(ruleOf(last.k,last).short)}</button>`);
+  h+=notesBlock(b);
   if(foot.length)h+=`<div class="bfoot">${foot.join('')}</div>`;
   return h+'</section>';
 }
@@ -559,7 +816,8 @@ function vLive(){
   const bal=jarBalance();
   let h=`<div class="livebar"><div><div class="muted" style="font-size:.85rem">Bowling now</div><div class="date">${esc(fmtDate(L.date))}</div></div><div class="jarnow"><span>Jar now</span><b class="${bal<0?'neg':''}">${bal<0?'−':''}${money(bal)}</b></div></div>`;
   h+='<div class="gtabs" role="tablist" aria-label="Current game">'+Array.from({length:S.games},(_,g)=>`<button role="tab" data-g="${g}" aria-selected="${g===lg}">Game ${g+1}${showScores?`<small>Team ${teamGame(g)}</small>`:''}</button>`).join('')+'</div>';
-  h+=`<label class="autosw" style="margin:0 0 14px"><input type="checkbox" id="scoreSw" ${showScores?'checked':''}> Track scores too (optional)</label>`;
+  h+=lanesBlock();
+  h+=`<label class="autosw" style="margin:0 0 14px"><input type="checkbox" id="scoreSw" ${showScores?'checked':''}> Track scores and frames (needed for Stats)</label>`;
   h+=S.bowlers.map(card).join('');
   if(showScores)h+=`<label class="autosw"><input type="checkbox" id="autoSw" ${auto?'checked':''}> When scoring frames, jump to the next bowler after each frame</label>`;
   h+=board();
@@ -619,14 +877,20 @@ function vHistory(){
       gs+=`<div class="game"><b>G${i+1}</b><span><span class="tag h">Hero</span> ${x.heroes.map(id=>esc(nameOf(id))).join(' & ')} (${x.max})</span><span><span class="tag c">Chump</span> ${x.chumps.map(id=>esc(nameOf(id))).join(' & ')} (${x.min})</span></div>`;
     });
     let sheets='';
-    if(n.rolls){for(let g=0;g<S.games;g++){const ids=Object.keys(n.rolls).filter(id=>n.rolls[id][g]);if(!ids.length)continue;sheets+=`<div class="hsg"><b>Game ${g+1}</b>`+ids.map(id=>`<div class="hsrow"><span>${esc(nameOf(id))}</span>${sheet(scoreGame(n.rolls[id][g]),null,true)}</div>`).join('')+'</div>'}}
+    if(n.rolls){for(let g=0;g<S.games;g++){const ids=Object.keys(n.rolls).filter(id=>n.rolls[id][g]);if(!ids.length)continue;sheets+=`<div class="hsg"><b>Game ${g+1}</b>`+ids.map(id=>`<div class="hsrow"><span>${esc(nameOf(id))}</span>${sheet(scoreGame(n.rolls[id][g]),null,true,n.rolls[id][g],n.leaves&&n.leaves[id]&&n.leaves[id][g])}</div>`).join('')+'</div>'}}
     const ev=n.jarEvents||[];let jar='';
     if(ev.length){
       const tin=ev.filter(e=>isIn(e)).reduce((a,e)=>a+e.amt,0),tout=ev.filter(e=>!isIn(e)).reduce((a,e)=>a+e.amt,0);
       const per={};ev.forEach(e=>{(per[e.b]=per[e.b]||{})[e.k]=(per[e.b][e.k]||0)+1});
       jar=`<details class="sheets"><summary>Jar: ${money(tin)} in, ${money(tout)} out</summary>`+Object.keys(per).map(b=>`<p class="jarline"><b>${esc(nameOf(b))}</b> ${Object.keys(per[b]).map(k=>`${esc(ruleOf(k,ev.find(e=>e.k===k)).short)}${per[b][k]>1?' ×'+per[b][k]:''}`).join(', ')}</p>`).join('')+'</details>';
     }
-    return `<div class="night"><div class="row" style="justify-content:space-between"><span class="date">${esc(fmtDate(n.date))}</span><button class="btn danger" data-del="${n.id}">Delete</button></div><div class="games">${gs}</div>${jar}${sheets?`<details class="sheets"><summary>Scoresheets</summary>${sheets}</details>`:''}</div>`;
+    let nts='';
+    if(n.notes){const rows=[],ln=n.notes.lanes;
+      if(ln&&ln.pair&&has(ln.pair[0]))rows.push(`<p class="jarline"><b>Lanes ${ln.pair[0]} &amp; ${ln.pair[1]}</b></p>`);
+      if(ln&&ln.notes)Object.entries(ln.notes).forEach(([l,t])=>{if(t)rows.push(`<p class="jarline">Lane ${l}: ${esc(t)}</p>`)});
+      Object.keys(n.notes).filter(k=>k!=='lanes').sort().forEach(k=>{const [b,g]=k.split(':'),x=n.notes[k],s1=lineSummary(x);if(s1||x.note)rows.push(`<p class="jarline"><b>${esc(nameOf(b))} G${+g+1}</b> ${esc(s1)}${x.note?`. ${esc(x.note)}`:''}</p>`)});
+      if(rows.length)nts=`<details class="sheets"><summary>Lines &amp; lane notes</summary>${rows.join('')}</details>`}
+    return `<div class="night"><div class="row" style="justify-content:space-between"><span class="date">${esc(fmtDate(n.date))}</span><button class="btn danger" data-del="${n.id}">Delete</button></div><div class="games">${gs}</div>${jar}${nts}${sheets?`<details class="sheets"><summary>Scoresheets</summary>${sheets}</details>`:''}</div>`;
   }).join('');
 }
 function vTeam(){
@@ -657,10 +921,15 @@ function wire(){
     draft=d;act({action:'addNight',date:d.date,scores:clean},'Scores saved').then(ok=>{if(ok){draft=null;quickOpen=false;view='standings';render()}});
   };
   // live night
-  all('[data-g]',b=>b.onclick=()=>{lg=+b.dataset.g;render()});
-  all('[data-frames]',b=>b.onclick=()=>{lg=+b.dataset.fg;padFor=sel=b.dataset.frames;render()});
-  if($('closePad'))$('closePad').onclick=()=>{padFor=null;render()};
+  all('[data-g]',b=>b.onclick=()=>{lg=+b.dataset.g;deckUp=new Set();render()});
+  all('[data-frames]',b=>b.onclick=()=>{lg=+b.dataset.fg;padFor=sel=b.dataset.frames;deckUp=new Set();render()});
+  if($('closePad'))$('closePad').onclick=()=>{padFor=null;deckUp=new Set();render()};
   all('[data-pins]',b=>b.onclick=()=>roll(+b.dataset.pins));
+  all('[data-deck]',b=>b.onclick=()=>{deck=b.dataset.deck==='1';deckUp=new Set();try{localStorage.setItem('ch-deck',deck?'1':'0')}catch(x){}render()});
+  all('[data-pin]',b=>b.onclick=()=>{const p=+b.dataset.pin;if(deckUp.has(p))deckUp.delete(p);else deckUp.add(p);render()});
+  const deckAv=()=>availMask(getRolls(sel,lg),getLeaves(sel,lg));
+  all('[data-deckrec]',b=>b.onclick=()=>{const av=deckAv();if(av===null)return;let up=0;deckUp.forEach(p=>{if(av&bit(p))up|=bit(p)});roll(popcount(av)-popcount(up),up)});
+  all('[data-deckall]',b=>b.onclick=()=>{const av=deckAv();if(av===null)return;if(b.dataset.deckall==='all')roll(popcount(av),0);else roll(0,av)});
   if($('undo'))$('undo').onclick=()=>{const r=getRolls(sel,lg);if(r.length){setRolls(sel,lg,r.slice(0,-1));render()}};
   if($('nextB'))$('nextB').onclick=()=>{advance();render()};
   if($('scoreSw'))$('scoreSw').onchange=e=>{showScores=e.target.checked;if(!showScores)padFor=null;try{localStorage.setItem('ch-scores',showScores?'1':'0')}catch(x){}render()};
@@ -678,6 +947,22 @@ function wire(){
     inp.onkeydown=e=>{if(e.key==='Enter')inp.blur()};
     inp.onblur=()=>setTimeout(()=>{if(!typing())render()},50);
   });
+  all('[data-notes]',d=>d.ontoggle=()=>{openNotes[d.dataset.notes]=d.open});
+  if($('lanesBox'))$('lanesBox').ontoggle=()=>{openNotes.lanes=$('lanesBox').open};
+  all('[data-nf]',inp=>{
+    inp.onchange=()=>{const k=inp.dataset.nk,d={};all(`[data-nk="${k}"]`,x=>{d[x.dataset.nf]=x.value.trim()});
+      if(!S.live.notes)S.live.notes={};S.live.notes[k]=d;quiet({action:'setNote',key:k,data:d},'Could not save that note.')};
+    inp.onkeydown=e=>{if(e.key==='Enter')inp.blur()};
+    inp.onblur=()=>setTimeout(()=>{if(!typing())render()},50);
+  });
+  all('[data-lane],[data-lanenote]',inp=>{
+    inp.onchange=()=>{const cur=noteOf('lanes'),pair=[0,1].map(i=>{const x=root.querySelector(`[data-lane="${i}"]`);return x?x.value.trim():''}),notes=Object.assign({},cur.notes||{});
+      all('[data-lanenote]',x=>{notes[x.dataset.lanenote]=x.value.trim()});
+      if(!S.live.notes)S.live.notes={};S.live.notes.lanes={pair,notes};quiet({action:'setNote',key:'lanes',data:{pair,notes}},'Could not save the lanes.')};
+    inp.onkeydown=e=>{if(e.key==='Enter')inp.blur()};
+    inp.onblur=()=>setTimeout(()=>{if(!typing())render()},50);
+  });
+  all('[data-stat]',b=>b.onclick=()=>{statsFor=b.dataset.stat;render()});
   all('[data-add]',b=>b.onclick=()=>addJar(b.dataset.b,b.dataset.add));
   all('[data-undojar]',b=>b.onclick=()=>{const e=liveJar().find(x=>x.id===b.dataset.undojar);if(e)removeJar(e)});
   if($('finishLive'))$('finishLive').onclick=async()=>{
