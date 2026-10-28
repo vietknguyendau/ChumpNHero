@@ -330,11 +330,13 @@ const BOUNTIES=[
   {k:'splitConv',label:'Split conversion',short:'Split made'},
   {k:'bigSplitConv',label:'Big split conversion (7-10, Greek Church, 4-6-7-10)',short:'Big split made'},
   {k:'fourBagger',label:'Four-bagger (Ham Turkey)',short:'4-bagger'},
-  {k:'clutch10',label:'Clutch 10th: strike or mark out',short:'Clutch 10th'}];
+  {k:'clutch10',label:'Clutch 10th: strike or mark out',short:'Clutch 10th'},
+  {k:'game200',get label(){return `Bowl a ${bigGame()}+ game`},get short(){return `${bigGame()} game`}}];
 FINES.forEach(r=>r.fine=true);BOUNTIES.forEach(r=>r.fine=false);
 const EXTRA=[{k:'chump',label:'Chump of the game (added when the night is saved)',short:'Chumps',fine:true},{k:'buyin',label:'Buy-in per bowler before Game 1',short:'Buy-ins',fine:true,buyin:true}];
 const RULES=[...FINES,...BOUNTIES,...EXTRA];
 const RULE=Object.fromEntries(RULES.map(r=>[r.k,r]));
+const bigGame=()=>+S.bigGame||200;
 const VIEWS=['tonight','standings','stats','jar','history','team'];
 let view=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'tonight';
 let loaded=false,loadError=false,busy=false,draft=null,quickOpen=false,editJar=false,newFine=true;
@@ -504,6 +506,8 @@ function roll(n,mask){
   r.push(n);L[r.length-1]=typeof mask==='number'?mask:null;deckUp=new Set();
   setRolls(sel,lg,r,L);
   const fresh=autoJar(r,L).slice(before).filter(e=>amt(e.k)>0||(e.k==='bigSplitConv'&&S.bigSplitPot));
+  const done=scoreGame(r);
+  if(done.complete&&done.total>=bigGame()&&amt('game200')>0)fresh.push({k:'game200'});
   if(fresh.length)toast(fresh.map(e=>{const R=ruleOf(e.k);return `${R.short}! ${R.fine?'Pay':'Collect'} ${e.k==='bigSplitConv'&&S.bigSplitPot?'the jar':money(amt(e.k))}`}).join('  ·  ')+' (auto)');
   const after=nextBall(r);
   if(auto&&(after.done||after.frame!==nb.frame)){advance();render();const c=$('card-'+sel);if(c)c.scrollIntoView({behavior:'smooth',block:'start'});return}
@@ -535,6 +539,8 @@ function liveJar(){
   if(!S.live)return [];
   const man=(S.live.jar||[]).filter(e=>!removedJar[e.id]).concat(pendingJar);
   let au=autoLive();
+  if(amt('game200')>0)LU().forEach(b=>{for(let g=0;g<S.games;g++){const x=gameScore(b.id,g);
+    if(x&&x.complete&&x.v>=bigGame()&&!man.some(e=>e.b===b.id&&e.k==='game200'&&e.g===g))au.push({id:`auto:${b.id}:${g}:g200`,b:b.id,k:'game200',g,amt:amt('game200'),at:0,auto:true})}});
   if(S.bigSplitPot&&au.some(e=>e.k==='bigSplitConv')){
     const past=[];S.nights.forEach(n=>(n.jarEvents||[]).forEach(e=>past.push(e)));
     let base=evSum(past)+evSum(man)+evSum(au.filter(e=>e.k!=='bigSplitConv'));
@@ -543,8 +549,9 @@ function liveJar(){
   return man.concat(au.filter(e=>e.amt>0));
 }
 function autoSet(b){
-  const r=getRolls(b,lg);if(!r.length)return new Set();
-  const s=new Set(['gutter1','gutter2','openSingle','fourBagger','clutch10']);
+  const r=getRolls(b,lg);
+  if(!r.length){const s=new Set();if(gameScore(b,lg))s.add('game200');return s}
+  const s=new Set(['gutter1','gutter2','openSingle','fourBagger','clutch10','game200']);
   if(getLeaves(b,lg).some(x=>typeof x==='number'))['splitCaused','splitConv','bigSplitConv'].forEach(k=>s.add(k));
   return s;
 }
@@ -1076,6 +1083,7 @@ function vJar(){
   if(!editJar)h+=`<div class="addc"><input type="text" id="cName" maxlength="24" placeholder="Button name, e.g. 5-pin miss"><div class="row" style="gap:8px;flex-wrap:nowrap"><div class="seg" role="group" aria-label="Fine or bounty"><button type="button" data-ftype="1" aria-pressed="${newFine}">Fine</button><button type="button" data-ftype="0" aria-pressed="${!newFine}">Bounty</button></div><span class="amtin">$<input type="number" id="cAmt" min="0" step="0.25" inputmode="decimal" value="0.50"></span></div><button class="btn" id="addC">Add button</button></div>`;
   h+=`<div class="rhead"><b>Setup</b></div>${row(RULE.buyin)}`;
   if(editJar){
+    h+=`<label class="rulerow edit"><span>Score that earns the big-game bounty</span><span class="amtin"><input type="number" min="100" max="300" step="1" inputmode="numeric" id="bigGameIn" value="${bigGame()}"></span></label>`;
     h+=`<label class="rulerow edit"><span>Big split conversion takes the whole jar (pot clean)</span><input type="checkbox" id="potClean" ${S.bigSplitPot?'checked':''}></label>`;
     h+=`<div class="row" style="margin-top:12px"><button class="btn" id="saveJar">Save amounts</button><button class="btn ghost" id="cancelJar">Cancel</button></div><p class="hint">Amounts go up in quarters. Set anything to $0.00 to turn it off and hide its button.</p>`;
   } else h+=`<div class="row" style="margin-top:12px"><button class="btn ghost" id="editJar">Edit amounts</button></div>`;
@@ -1182,6 +1190,7 @@ function wire(){
       const t=v===''?null:Math.round(+v);
       if(!S.live.totals)S.live.totals={};
       if(t===null)delete S.live.totals[b+':'+g];else S.live.totals[b+':'+g]=t;
+      if(t!==null&&t>=bigGame()&&amt('game200')>0)toast(`${nameOf(b)}: ${t}! Collect ${money(amt('game200'))} (auto)`);
       quiet({action:'setTotal',bowlerId:b,game:g,total:t},'Could not save that score.');
     };
     inp.onkeydown=e=>{if(e.key==='Enter')inp.blur()};
@@ -1240,7 +1249,7 @@ function wire(){
   if($('saveJar'))$('saveJar').onclick=async()=>{
     const jar={};all('[data-jar]',i=>{jar[i.dataset.jar]=Math.max(0,Math.round((+i.value||0)*4)/4)});
     const customJar=(S.customJar||[]).map(x=>{const i=root.querySelector(`[data-cjar="${x.k}"]`);return Object.assign({},x,i?{amt:Math.max(0,Math.round((+i.value||0)*4)/4)}:{})});
-    if(await act({action:'settings',jar,customJar,bigSplitPot:$('potClean').checked},'Jar amounts saved')){editJar=false;render()}
+    if(await act({action:'settings',jar,customJar,bigSplitPot:$('potClean').checked,bigGame:$('bigGameIn').value},'Jar amounts saved')){editJar=false;render()}
   };
   all('[data-ftype]',b=>b.onclick=()=>{newFine=b.dataset.ftype==='1';all('[data-ftype]',x=>x.setAttribute('aria-pressed',String(x.dataset.ftype===(newFine?'1':'0'))))});
   if($('addC')){const addC=()=>{
