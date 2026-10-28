@@ -253,7 +253,10 @@ export default async function handler(req, res) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return bad(res, "Bad date");
       if (await redis.get(K.liveMeta)) return bad(res, "A night is already in progress");
       for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes]) await redis.del(k);
-      await redis.set(K.liveMeta, JSON.stringify({ date, started: Date.now() }));
+      const roster = values(await redis.hgetall(K.bowlers)).map((b) => b.id);
+      const lineup = Array.isArray(body.lineup) ? roster.filter((id) => body.lineup.includes(id)) : roster;
+      if (!lineup.length) return bad(res, "Pick at least one bowler for tonight");
+      await redis.set(K.liveMeta, JSON.stringify({ date, started: Date.now(), lineup }));
     } else if (action === "setRolls") {
       if (!(await redis.get(K.liveMeta))) return bad(res, "No night in progress. Start one first.");
       const id = String(body.bowlerId || "").slice(0, 20);
@@ -293,6 +296,13 @@ export default async function handler(req, res) {
       const e = { id: uid(), b, k, g: Math.max(0, Math.min(4, Math.round(+body.game || 0))), amt, at: Date.now() };
       if (custom) { e.label = custom.label; e.fine = custom.fine; } // kept even if the button is deleted later
       await redis.hset(K.liveJar, { [e.id]: JSON.stringify(e) });
+    } else if (action === "setLineup") {
+      const meta = parse(await redis.get(K.liveMeta));
+      if (!meta) return bad(res, "No night in progress");
+      const roster = values(await redis.hgetall(K.bowlers)).map((b) => b.id);
+      const lineup = roster.filter((id) => Array.isArray(body.lineup) && body.lineup.includes(id));
+      if (!lineup.length) return bad(res, "Keep at least one bowler in tonight's lineup");
+      await redis.set(K.liveMeta, JSON.stringify({ ...meta, lineup }));
     } else if (action === "setNote") {
       if (!(await redis.get(K.liveMeta))) return bad(res, "No night in progress. Start one first.");
       const d = body.data || {};
@@ -343,6 +353,11 @@ export default async function handler(req, res) {
       }
       const anyDone = Object.values(scores).some((a) => a.some((v) => v !== null));
       if (!anyDone && !jarEvents.length) return bad(res, "Enter at least one score before saving the night");
+      // Only tonight's lineup counts (anyone removed mid-night is left out).
+      const inLineup = (id) => !Array.isArray(meta.lineup) || meta.lineup.includes(id);
+      for (const o of [scores, rolls, splits, leaves]) for (const id of Object.keys(o)) if (!inLineup(id)) delete o[id];
+      for (let i = jarEvents.length - 1; i >= 0; i--) if (!inLineup(jarEvents[i].b)) jarEvents.splice(i, 1);
+      if (!Object.values(scores).some((x) => x.some((v) => v !== null)) && !jarEvents.length) return bad(res, "Enter at least one score or jar item for tonight's bowlers");
       // Fines and bounties detected from the frames.
       const settingsNow = await getSettings();
       const isIn = (e) => (e.fine !== undefined ? e.fine : !["splitConv", "bigSplitConv", "fourBagger", "clutch10"].includes(e.k));
@@ -375,8 +390,8 @@ export default async function handler(req, res) {
         }
       }
       const notes = {};
-      for (const [k, v] of Object.entries(notesRaw)) notes[k] = parse(v);
-      const n = { id: uid(), date: meta.date, scores, rolls, splits, leaves, jarEvents, notes, created: Date.now() };
+      for (const [k, v] of Object.entries(notesRaw)) if (k === "lanes" || inLineup(k.split(":")[0])) notes[k] = parse(v);
+      const n = { id: uid(), date: meta.date, lineup: meta.lineup, scores, rolls, splits, leaves, jarEvents, notes, created: Date.now() };
       await redis.hset(K.nights, { [n.id]: JSON.stringify(n) });
       for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes, K.liveMeta]) await redis.del(k);
     } else if (action === "cancelNight") {
