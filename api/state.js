@@ -314,7 +314,12 @@ export default async function handler(req, res) {
       } else {
         const [id, g] = String(body.key || "").split(":");
         if (!id || !(+g >= 0 && +g < 5)) return bad(res, "Bad note");
-        const n = { stand: num(d.stand, 1, 39), target: num(d.target, 1, 39), bp: num(d.bp, 1, 39), ball: txt(d.ball, 30), note: txt(d.note, 200) };
+        const n = { stand: num(d.stand, 1, 39), target: num(d.target, 1, 39), bp: num(d.bp, 1, 39), ball: txt(d.ball, 30), note: txt(d.note, 200), lanes: {} };
+        // This bowler's own line and notes for each lane: foot board, mark at the arrows, breakpoint, note.
+        for (const [l, x] of Object.entries(d.lanes || {}).slice(0, 2)) {
+          if (num(l, 1, 200) === "" || !x) continue;
+          n.lanes[+l] = { foot: num(x.foot, 1, 39), mark: num(x.mark, 1, 39), bp: num(x.bp, 1, 39), note: txt(x.note, 200) };
+        }
         await redis.hset(K.liveNotes, { [id.slice(0, 20) + ":" + Math.round(+g)]: JSON.stringify(n) });
       }
     } else if (action === "removeJar") {
@@ -352,12 +357,10 @@ export default async function handler(req, res) {
         if (!rolls[id][gi] && scores[id][gi] === null) scores[id][gi] = +parse(v);
       }
       const anyDone = Object.values(scores).some((a) => a.some((v) => v !== null));
-      if (!anyDone && !jarEvents.length) return bad(res, "Enter at least one score before saving the night");
       // Only tonight's lineup counts (anyone removed mid-night is left out).
       const inLineup = (id) => !Array.isArray(meta.lineup) || meta.lineup.includes(id);
       for (const o of [scores, rolls, splits, leaves]) for (const id of Object.keys(o)) if (!inLineup(id)) delete o[id];
       for (let i = jarEvents.length - 1; i >= 0; i--) if (!inLineup(jarEvents[i].b)) jarEvents.splice(i, 1);
-      if (!Object.values(scores).some((x) => x.some((v) => v !== null)) && !jarEvents.length) return bad(res, "Enter at least one score or jar item for tonight's bowlers");
       // Fines and bounties detected from the frames.
       const settingsNow = await getSettings();
       const isIn = (e) => (e.fine !== undefined ? e.fine : !["splitConv", "bigSplitConv", "fourBagger", "clutch10"].includes(e.k));
@@ -391,6 +394,8 @@ export default async function handler(req, res) {
       }
       const notes = {};
       for (const [k, v] of Object.entries(notesRaw)) if (k === "lanes" || inLineup(k.split(":")[0])) notes[k] = parse(v);
+      if (!Object.values(scores).some((x) => x.some((v) => v !== null)) && !jarEvents.length && Object.keys(notes).length === 0)
+        return bad(res, "Nothing to save yet. Add a score, a jar item or a note first.");
       const n = { id: uid(), date: meta.date, lineup: meta.lineup, scores, rolls, splits, leaves, jarEvents, notes, created: Date.now() };
       await redis.hset(K.nights, { [n.id]: JSON.stringify(n) });
       for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes, K.liveMeta]) await redis.del(k);
