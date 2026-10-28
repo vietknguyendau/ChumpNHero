@@ -228,6 +228,16 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .amtin input{width:86px;text-align:right}
 .jarline{margin:6px 0 0;font-size:.9rem}
 .chips.wrap{flex-wrap:wrap;overflow:visible}
+.lanecols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+.lanecol{display:flex;flex-direction:column;gap:6px;min-width:0}
+.lanecol.solo{margin-top:10px;max-width:320px}
+.lanecol>b{font-size:.9rem}
+.lanesvg{width:100%;height:auto;display:block}
+.ngrid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.ngrid3 .field{font-size:.72rem;gap:2px;white-space:nowrap;overflow:hidden}
+.ngrid3 input{padding:8px 4px!important;text-align:center}
+.lanecol .field{min-width:0}
+.lanecol input{min-width:0;width:100%}
 .kind{display:inline-block;font-size:.72rem;font-weight:800;border-radius:6px;padding:1px 6px;margin-right:4px;vertical-align:1px}
 .kind.f{background:var(--redSoft);color:var(--red)}.kind.w{background:var(--goldSoft);color:var(--ink)}
 .addc{display:flex;flex-direction:column;gap:8px;margin-top:8px;padding:12px;border-radius:12px;background:var(--bg)}
@@ -542,27 +552,61 @@ async function removeJar(e){
 // ---- Lines, lanes & notes ----
 const noteOf=k=>(S.live&&S.live.notes&&S.live.notes[k])||{};
 const has=v=>v!==''&&v!==undefined&&v!==null;
-function lineSummary(n){const p=[];if(has(n.stand))p.push('stand '+n.stand);if(has(n.target))p.push('target '+n.target);if(has(n.bp))p.push('breakpoint '+n.bp);if(n.ball)p.push(n.ball);return p.join(', ')}
+function laneLine(x){const q=[];if(has(x.foot))q.push('foot '+x.foot);if(has(x.mark))q.push('mark '+x.mark);if(has(x.bp))q.push('breakpoint '+x.bp);return q.join(', ')}
+function lineSummary(n){
+  const p=[];
+  const g=laneLine({foot:n.stand,mark:n.target,bp:n.bp});if(g)p.push(g);
+  Object.entries(n.lanes||{}).forEach(([l,x])=>{const q=laneLine(x);if(q)p.push(`lane ${l}: ${q}`)});
+  if(n.ball)p.push(n.ball);
+  return p.join('; ');
+}
 function moveText(prev,cur){
   const d=(a,b)=>has(a)&&has(b)?b-a:null,f=(x,l)=>x===null||x===0?'':`${l} ${x>0?'+':'−'}${Math.abs(x)}`;
-  return [f(d(prev.stand,cur.stand),'feet'),f(d(prev.target,cur.target),'target')].filter(Boolean).join(', ');
+  const parts=[f(d(prev.stand,cur.stand),'foot'),f(d(prev.target,cur.target),'mark')].filter(Boolean);
+  Object.entries(cur.lanes||{}).forEach(([l,x])=>{const pv=(prev.lanes||{})[l]||{};const m=[f(d(pv.foot,x.foot),'foot'),f(d(pv.mark,x.mark),'mark')].filter(Boolean);if(m.length)parts.push(`lane ${l} ${m.join(', ')}`)});
+  return parts.join('; ');
 }
+// Mini lane: board 1 on the right (your gutter side), foot at the bottom, arrows in the middle, breakpoint at the top.
+function laneSvg(cur,prev){
+  const X=b=>152-(b-1)*(144/38),Y={foot:112,mark:66,bp:16};
+  const pts=x=>['foot','mark','bp'].filter(k=>has(x[k])).map(k=>[X(+x[k]),Y[k]]);
+  const path=ps=>ps.length>1?'M'+ps.map(p=>p.join(' ')).join(' L'):'';
+  const cp=pts(cur),pp=pts(prev);
+  let s=`<svg class="lanesvg" viewBox="0 0 160 124" role="img" aria-label="Line: ${esc(laneLine(cur)||'not set')}"><rect x="6" y="4" width="148" height="116" rx="4" fill="var(--lane)" stroke="var(--line)"/>`;
+  for(let b=5;b<=35;b+=5)s+=`<path d="M${X(b)} ${Y.mark-6} l-3.5 8 h7 z" fill="var(--muted)" opacity=".7"/>`;
+  s+=`<line x1="6" y1="${Y.foot-10}" x2="154" y2="${Y.foot-10}" stroke="var(--red)" stroke-width="1" opacity=".6"/>`;
+  if(path(pp))s+=`<path d="${path(pp)}" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="4 3"/>`;
+  if(path(cp))s+=`<path d="${path(cp)}" fill="none" stroke="var(--teal)" stroke-width="3" stroke-linecap="round"/>`;
+  cp.forEach(([x,y],i)=>{s+=`<circle cx="${x}" cy="${y}" r="5" fill="${y===Y.foot?'var(--gold)':'var(--teal)'}" stroke="var(--surface)" stroke-width="2"/>`});
+  s+=`<text x="150" y="122" font-size="7" text-anchor="end" fill="var(--muted)">1</text><text x="10" y="122" font-size="7" fill="var(--muted)">39</text></svg>`;
+  return s;
+}
+const lanePair=()=>{const p=noteOf('lanes').pair;return p&&has(p[0])&&has(p[1])?p:null};
 function notesBlock(b){
-  const k=b.id+':'+lg,n=noteOf(k),prev=lg>0?noteOf(b.id+':'+(lg-1)):{};
+  const k=b.id+':'+lg,n=noteOf(k),prev=lg>0?noteOf(b.id+':'+(lg-1)):{},pair=lanePair();
   const sum=lineSummary(n),mv=lg>0?moveText(prev,n):'';
-  const ph=(f,def)=>has(prev[f])?`G${lg}: ${prev[f]}`:def;
-  const numIn=(f,label,def)=>`<label class="field">${label}<input type="number" inputmode="decimal" min="1" max="39" step="0.5" data-nf="${f}" data-nk="${k}" value="${has(n[f])?n[f]:''}" placeholder="${esc(ph(f,def))}"></label>`;
-  return `<details class="notes" data-notes="${b.id}" ${openNotes[b.id]?'open':''}><summary>Line &amp; notes, game ${lg+1}${sum?`<span class="nsum">${esc(sum)}${mv?` (${esc(mv)})`:''}</span>`:''}</summary>
-  <div class="ngrid">${numIn('stand','Stand (board)','e.g. 25')}${numIn('target','Target at arrows','e.g. 12')}${numIn('bp','Breakpoint board','e.g. 7')}
-  <label class="field">Ball<input type="text" maxlength="30" data-nf="ball" data-nk="${k}" value="${esc(n.ball||'')}" placeholder="${esc(ph('ball','Ball name'))}"></label></div>
-  <label class="field" style="margin-top:8px">Adjustment note<input type="text" maxlength="200" data-nf="note" data-nk="${k}" value="${esc(n.note||'')}" placeholder="e.g. Moved 2 left, ball checking up early"></label></details>`;
+  const ph=(v,def)=>has(v)?`G${lg}: ${v}`:def;
+  const numIn=(f,label,val,pv,def,lane)=>`<label class="field">${label}<input type="number" inputmode="decimal" min="1" max="39" step="0.5" data-nf="${f}" data-nk="${k}"${lane?` data-nl="${lane}"`:''} value="${has(val)?val:''}" placeholder="${esc(has(pv)?String(pv):def)}" aria-label="${label}${lane?' lane '+lane:''}${has(pv)?`, last game ${pv}`:''}"></label>`;
+  let body='';
+  if(pair){
+    body+='<div class="lanecols">'+pair.map(l=>{const x=(n.lanes||{})[l]||{},pv=(prev.lanes||{})[l]||{};
+      return `<div class="lanecol"><b>Lane ${l}</b>${laneSvg(x,pv)}<div class="ngrid3">${numIn('foot','Foot',x.foot,pv.foot,'25',l)}${numIn('mark','Mark',x.mark,pv.mark,'12',l)}${numIn('bp','Break',x.bp,pv.bp,'7',l)}</div>
+      <label class="field">Your lane ${l} notes<input type="text" maxlength="200" data-nf="note" data-nk="${k}" data-nl="${l}" value="${esc(x.note||'')}" placeholder="${esc(pv.note?`G${lg}: ${pv.note}`:'e.g. reads early, need more speed')}"></label></div>`}).join('')+'</div>';
+  } else {
+    body+=`<div class="lanecol solo">${laneSvg({foot:n.stand,mark:n.target,bp:n.bp},{foot:prev.stand,mark:prev.target,bp:prev.bp})}<div class="ngrid3">${numIn('stand','Foot',n.stand,prev.stand,'25')}${numIn('target','Mark',n.target,prev.target,'12')}${numIn('bp','Break',n.bp,prev.bp,'7')}</div></div>
+    <p class="hint" style="margin:6px 0 0">Set your lanes at the top to track each lane separately.</p>`;
+  }
+  body+=`<div class="ngrid" style="margin-top:10px"><label class="field">Ball<input type="text" maxlength="30" data-nf="ball" data-nk="${k}" value="${esc(n.ball||'')}" placeholder="${esc(ph(prev.ball,'Ball name'))}"></label>
+  <label class="field">Adjustment note<input type="text" maxlength="200" data-nf="note" data-nk="${k}" value="${esc(n.note||'')}" placeholder="e.g. Moved 2 left"></label></div>
+  <p class="hint" style="margin:8px 0 0">Boards count from your gutter side. Foot is where you stand, mark is the board you hit at the arrows. Dashed line and gray numbers are last game. Break is your breakpoint board.</p>`;
+  return `<details class="notes" data-notes="${b.id}" ${openNotes[b.id]?'open':''}><summary>Line &amp; notes, game ${lg+1}${sum?`<span class="nsum">${esc(sum)}${mv?` (${esc(mv)})`:''}</span>`:''}</summary>${body}</details>`;
 }
 function lanesBlock(){
   const ln=noteOf('lanes'),pair=ln.pair||['',''],nt=ln.notes||{},set=has(pair[0])&&has(pair[1]);
   const laneIn=(i,ph)=>`<label class="field">${i?'Second':'First'} lane<input type="number" inputmode="numeric" min="1" max="200" data-lane="${i}" value="${has(pair[i])?pair[i]:''}" placeholder="${ph}"></label>`;
-  return `<details class="lanesbox" id="lanesBox" ${openNotes.lanes?'open':''}><summary>${set?`Lanes ${pair[0]} &amp; ${pair[1]}`:'Set your lanes'}<span class="nsum">${set&&(nt[pair[0]]||nt[pair[1]])?'Lane notes saved':'Lane notes and lane-by-lane stats'}</span></summary>
+  return `<details class="lanesbox" id="lanesBox" ${openNotes.lanes?'open':''}><summary>${set?`Lanes ${pair[0]} &amp; ${pair[1]}`:'Set your lanes'}<span class="nsum">${set?'Team lane notes. Each bowler’s own lane notes are on their card.':'Unlocks lane notes and lane-by-lane stats'}</span></summary>
   <div class="ngrid">${laneIn(0,'e.g. 17')}${laneIn(1,'e.g. 18')}</div>
-  ${set?pair.map(l=>`<label class="field" style="margin-top:8px">Lane ${l} notes<input type="text" maxlength="200" data-lanenote="${l}" value="${esc(nt[l]||'')}" placeholder="e.g. hooking early, tighter backend"></label>`).join(''):''}
+  ${set?pair.map(l=>`<label class="field" style="margin-top:8px">Team notes, lane ${l}<input type="text" maxlength="200" data-lanenote="${l}" value="${esc(nt[l]||'')}" placeholder="e.g. hooking early, tighter backend"></label>`).join(''):''}
   <p class="hint">Game 1 starts on the first lane. Lanes alternate every frame and swap each game.</p></details>`;
 }
 const laneFor=(pair,g,f)=>pair&&has(pair[0])&&has(pair[1])?((f+g)%2===0?pair[0]:pair[1]):null;
@@ -626,7 +670,7 @@ function vStats(){
   if(!statsFor||!S.bowlers.some(b=>b.id===statsFor))statsFor=S.bowlers[0].id;
   let h='<div class="chips" style="margin-top:4px">'+S.bowlers.map(b=>`<button class="chip" data-stat="${b.id}" aria-pressed="${b.id===statsFor}">${esc(b.name)}</button>`).join('')+'</div>';
   const rk=bowlerRacks(statsFor);
-  if(!rk.length)return h+'<div class="empty"><p><b>No frames yet.</b></p><p>Stats come from games scored frame by frame. On bowl night, turn on “Track scores too” and score a game by frames. Use the pin deck for split and pin-by-pin stats.</p></div>';
+  if(!rk.length)return h+'<div class="empty"><p><b>No frames yet.</b></p><p>Stats come from games scored frame by frame. On bowl night, turn on “Track scores and frames” and score a game by frames. Use the pin deck for split and pin-by-pin stats.</p></div>'+journal();
   const s=statsOf(rk),al=alertsOf(rk);
   h+=`<div class="stats stats4"><div><b>${pct(s.strikes,s.fb)}</b><span>Strikes</span></div><div><b>${pct(s.spares.made,s.spares.att)}</b><span>Spares</span></div><div><b>${pct(s.single.made,s.single.att)}</b><span>Single-pin</span></div><div><b>${pct(s.splits.made,s.splits.att)}</b><span>Splits</span></div></div>`;
   h+=`<h2>Trouble spots</h2>`+(al.length?`<div class="alerts">${al.map(a=>`<p class="alert">${esc(a.text)}</p>`).join('')}</div>`:'<p class="muted">Nothing worrying right now. Alerts show up when misses start repeating.</p>');
@@ -637,16 +681,21 @@ function vStats(){
   if(top.length)h+=`<h2>Most common leaves</h2><div class="tablewrap"><table><tbody>${top.map(([m,n])=>`<tr><td class="name">${esc(leaveLabel(+m))}${isSplit(+m)?' <span class="tag c">split</span>':''}</td><td>${n}×</td></tr>`).join('')}</tbody></table></div>`;
   const lanes=Object.entries(s.byLane);
   if(lanes.length)h+=`<h2>By lane</h2><div class="tablewrap"><table><thead><tr><th>Lane</th><th>Strikes</th><th>Spares</th><th>Frames</th></tr></thead><tbody>${lanes.map(([l,v])=>`<tr><td class="name">Lane ${l}</td><td>${pct(v.st,v.fb)}</td><td>${pct(v.made,v.att)}</td><td>${v.fb}</td></tr>`).join('')}</tbody></table></div>`;
-  // line journal
+  h+=journal();
+  if(!s.deckRacks)h+='<p class="hint">Tip: score with the pin deck to unlock split stats, the pin heatmap and leave tracking.</p>';
+  return h;
+}
+function journal(){
+  let h='';
   const nights=S.nights.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);
   const jr=[];
-  const lineRows=(notes,date,live)=>{const rows=[];for(let g=0;g<S.games;g++){const x=notes[statsFor+':'+g];if(!x)continue;const s1=lineSummary(x),mv=g>0&&notes[statsFor+':'+(g-1)]?moveText(notes[statsFor+':'+(g-1)],x):'';if(s1||x.note)rows.push(`<p class="jarline"><b>G${g+1}</b> ${esc(s1)}${mv?` <span class="muted">(${esc(mv)})</span>`:''}${x.note?`<br><span class="muted">${esc(x.note)}</span>`:''}</p>`)}
-    const ln=notes.lanes;if(ln&&ln.notes)Object.entries(ln.notes).forEach(([l,t])=>{if(t)rows.push(`<p class="jarline"><b>Lane ${l}</b> <span class="muted">${esc(t)}</span></p>`)});
+  const lineRows=(notes,date,live)=>{const rows=[];for(let g=0;g<S.games;g++){const x=notes[statsFor+':'+g];if(!x)continue;const s1=lineSummary(x),mv=g>0&&notes[statsFor+':'+(g-1)]?moveText(notes[statsFor+':'+(g-1)],x):'';const ln=Object.entries(x.lanes||{}).filter(([,y])=>y.note).map(([l,y])=>`<br><span class="muted">Lane ${l}: ${esc(y.note)}</span>`).join('');
+      if(s1||x.note||ln)rows.push(`<p class="jarline"><b>G${g+1}</b> ${esc(s1)}${mv?` <span class="muted">(${esc(mv)})</span>`:''}${x.note?`<br><span class="muted">${esc(x.note)}</span>`:''}${ln}</p>`)}
+    const tl=notes.lanes;if(tl&&tl.notes)Object.entries(tl.notes).forEach(([l,t])=>{if(t)rows.push(`<p class="jarline"><b>Team, lane ${l}</b> <span class="muted">${esc(t)}</span></p>`)});
     if(rows.length)jr.push(`<div class="night"><span class="date">${esc(fmtDate(date))}${live?' (tonight)':''}</span>${rows.join('')}</div>`)};
   if(S.live)lineRows(S.live.notes||{},S.live.date,true);
   nights.slice(0,6).forEach(n=>lineRows(n.notes||{},n.date));
   if(jr.length)h+=`<h2>Line journal</h2>${jr.join('')}`;
-  if(!s.deckRacks)h+='<p class="hint">Tip: score with the pin deck to unlock split stats, the pin heatmap and leave tracking.</p>';
   return h;
 }
 
@@ -909,8 +958,8 @@ function vHistory(){
     let nts='';
     if(n.notes){const rows=[],ln=n.notes.lanes;
       if(ln&&ln.pair&&has(ln.pair[0]))rows.push(`<p class="jarline"><b>Lanes ${ln.pair[0]} &amp; ${ln.pair[1]}</b></p>`);
-      if(ln&&ln.notes)Object.entries(ln.notes).forEach(([l,t])=>{if(t)rows.push(`<p class="jarline">Lane ${l}: ${esc(t)}</p>`)});
-      Object.keys(n.notes).filter(k=>k!=='lanes').sort().forEach(k=>{const [b,g]=k.split(':'),x=n.notes[k],s1=lineSummary(x);if(s1||x.note)rows.push(`<p class="jarline"><b>${esc(nameOf(b))} G${+g+1}</b> ${esc(s1)}${x.note?`. ${esc(x.note)}`:''}</p>`)});
+      if(ln&&ln.notes)Object.entries(ln.notes).forEach(([l,t])=>{if(t)rows.push(`<p class="jarline">Team, lane ${l}: ${esc(t)}</p>`)});
+      Object.keys(n.notes).filter(k=>k!=='lanes').sort().forEach(k=>{const [b,g]=k.split(':'),x=n.notes[k],s1=lineSummary(x),ln=Object.entries(x.lanes||{}).filter(([,y])=>y.note).map(([l,y])=>` Lane ${l}: ${esc(y.note)}.`).join('');if(s1||x.note||ln)rows.push(`<p class="jarline"><b>${esc(nameOf(b))} G${+g+1}</b> ${esc(s1)}${x.note?`. ${esc(x.note)}`:''}${ln?`<br><span class="muted">${ln.trim()}</span>`:''}</p>`)});
       if(rows.length)nts=`<details class="sheets"><summary>Lines &amp; lane notes</summary>${rows.join('')}</details>`}
     return `<div class="night"><div class="row" style="justify-content:space-between"><span class="date">${esc(fmtDate(n.date))}</span><button class="btn danger" data-del="${n.id}">Delete</button></div><div class="games">${gs}</div>${jar}${nts}${sheets?`<details class="sheets"><summary>Scoresheets</summary>${sheets}</details>`:''}</div>`;
   }).join('');
@@ -989,7 +1038,9 @@ function wire(){
   all('[data-notes]',d=>d.ontoggle=()=>{openNotes[d.dataset.notes]=d.open});
   if($('lanesBox'))$('lanesBox').ontoggle=()=>{openNotes.lanes=$('lanesBox').open};
   all('[data-nf]',inp=>{
-    inp.onchange=()=>{const k=inp.dataset.nk,d={};all(`[data-nk="${k}"]`,x=>{d[x.dataset.nf]=x.value.trim()});
+    inp.onchange=()=>{const k=inp.dataset.nk,old=noteOf(k),d={lanes:Object.assign({},old.lanes||{})};
+      all(`[data-nk="${k}"]`,x=>{if(x.dataset.nl){const l=x.dataset.nl;d.lanes[l]=Object.assign({},d.lanes[l]||{});d.lanes[l][x.dataset.nf]=x.value.trim()}else d[x.dataset.nf]=x.value.trim()});
+      if(!root.querySelector(`[data-nk="${k}"][data-nf="stand"]`)){d.stand=old.stand;d.target=old.target;d.bp=old.bp}
       if(!S.live.notes)S.live.notes={};S.live.notes[k]=d;quiet({action:'setNote',key:k,data:d},'Could not save that note.')};
     inp.onkeydown=e=>{if(e.key==='Enter')inp.blur()};
     inp.onblur=()=>setTimeout(()=>{if(!typing())render()},50);
