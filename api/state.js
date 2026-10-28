@@ -14,11 +14,11 @@ const DEFAULTS = { team: "Our Team", games: 3 };
 // Chump & Hero Jar amounts in dollars (editable in the app).
 const DEFAULT_JAR = {
   gutter1: 1, gutter2: 0.5, openSingle: 0.5, foul: 1, splitCaused: 0.5,
-  splitConv: 2, bigSplitConv: 5, fourBagger: 1, clutch10: 1,
+  splitConv: 2, bigSplitConv: 5, fourBagger: 1, clutch10: 1, game200: 1,
   chump: 0, buyin: 0,
 };
 const JAR_TAPS = ["gutter1", "gutter2", "openSingle", "foul", "splitCaused",
-  "splitConv", "bigSplitConv", "fourBagger", "clutch10", "buyin"];
+  "splitConv", "bigSplitConv", "fourBagger", "clutch10", "game200", "buyin"];
 // Team-made buttons, e.g. {k:"c_ab12cd", label:"5-pin miss", fine:true, amt:0.5}
 function cleanCustom(list) {
   if (!Array.isArray(list)) return [];
@@ -50,6 +50,7 @@ function normalize(raw) {
   s.bigSplitPot = Boolean(raw.bigSplitPot);
   s.customJar = cleanCustom(raw.customJar);
   s.hdcp = cleanHdcp(raw.hdcp);
+  s.bigGame = +raw.bigGame >= 100 && +raw.bigGame <= 300 ? Math.round(+raw.bigGame) : 200; // score that earns the big-game bounty
   delete s.fine;
   return s;
 }
@@ -260,6 +261,7 @@ export default async function handler(req, res) {
       const cur = await getSettings();
       if (body.team !== undefined) cur.team = String(body.team).trim().slice(0, 40) || cur.team;
       if (body.games !== undefined) cur.games = Math.max(1, Math.min(5, Math.round(+body.games || 3)));
+      if (body.bigGame !== undefined && +body.bigGame >= 100 && +body.bigGame <= 300) cur.bigGame = Math.round(+body.bigGame);
       if (body.hdcp && typeof body.hdcp === "object") cur.hdcp = cleanHdcp({ ...cur.hdcp, ...body.hdcp });
       if (Array.isArray(body.customJar)) cur.customJar = cleanCustom(body.customJar);
       if (body.bigSplitPot !== undefined) cur.bigSplitPot = Boolean(body.bigSplitPot);
@@ -402,7 +404,7 @@ export default async function handler(req, res) {
       for (let i = jarEvents.length - 1; i >= 0; i--) if (!inLineup(jarEvents[i].b)) jarEvents.splice(i, 1);
       // Fines and bounties detected from the frames.
       const settingsNow = await getSettings();
-      const isIn = (e) => (e.fine !== undefined ? e.fine : !["splitConv", "bigSplitConv", "fourBagger", "clutch10"].includes(e.k));
+      const isIn = (e) => (e.fine !== undefined ? e.fine : !["splitConv", "bigSplitConv", "fourBagger", "clutch10", "game200"].includes(e.k));
       let potBase = null;
       for (const id of Object.keys(rolls)) {
         rolls[id].forEach((r, g) => {
@@ -418,6 +420,14 @@ export default async function handler(req, res) {
             }
             if (amt > 0) jarEvents.push({ id: uid(), b: id, k: a.k, g, amt, at: Date.now(), auto: true });
           });
+        });
+      }
+      // Big-game bounty: every finished game at or above the cutoff (scratch), unless someone already tapped it.
+      if ((jar.game200 || 0) > 0) {
+        const thr = settingsNow.bigGame || 200;
+        for (const [id, arr] of Object.entries(scores)) arr.forEach((v, g) => {
+          if (typeof v === "number" && v >= thr && !jarEvents.some((e) => e.b === id && e.k === "game200" && e.g === g))
+            jarEvents.push({ id: uid(), b: id, k: "game200", g, amt: jar.game200, at: Date.now(), auto: true });
         });
       }
       // Chump of each game pays the chump fine.
