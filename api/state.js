@@ -251,6 +251,15 @@ export default async function handler(req, res) {
         cur.hdcpHistory = cur.hdcpHistory.filter((x) => x.asOf !== snap.asOf).concat([snap]).sort((a, b) => a.asOf.localeCompare(b.asOf)).slice(-40);
       }
       await redis.set(K.settings, JSON.stringify(cur));
+    } else if (action === "removeNightJar") {
+      // Fix a mistake in a saved night's jar.
+      const raw = await redis.hget(K.nights, String(body.nightId || ""));
+      if (!raw) return bad(res, "That night wasn't found");
+      const n = parse(raw);
+      const before = (n.jarEvents || []).length;
+      n.jarEvents = (n.jarEvents || []).filter((e) => e.id !== String(body.id || ""));
+      if (n.jarEvents.length === before) return bad(res, "That entry wasn't found");
+      await redis.hset(K.nights, { [n.id]: JSON.stringify(n) });
     } else if (action === "removeBowler") {
       await redis.hdel(K.bowlers, String(body.id));
     } else if (action === "addNight") {
@@ -430,7 +439,7 @@ export default async function handler(req, res) {
               }
               amt = Math.max(0, potBase); potBase -= amt;
             }
-            if (amt > 0) jarEvents.push({ id: uid(), b: id, k: a.k, g, amt, at: Date.now(), auto: true });
+            if (amt > 0) jarEvents.push({ id: uid(), b: id, k: a.k, g, f: frameOfRolls(r)[a.i], amt, at: Date.now() + a.i, auto: true });
           });
         });
       }
@@ -439,7 +448,7 @@ export default async function handler(req, res) {
         const thr = settingsNow.bigGame || 200;
         for (const [id, arr] of Object.entries(scores)) arr.forEach((v, g) => {
           if (typeof v === "number" && v >= thr && !jarEvents.some((e) => e.b === id && e.k === "game200" && e.g === g))
-            jarEvents.push({ id: uid(), b: id, k: "game200", g, amt: jar.game200, at: Date.now(), auto: true });
+            jarEvents.push({ id: uid(), b: id, k: "game200", g, f: 9, amt: jar.game200, at: Date.now() + 50, auto: true });
         });
       }
       // Chump of each game pays the chump fine.
