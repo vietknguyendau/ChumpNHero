@@ -331,7 +331,7 @@ const FINES=[
   {k:'gutter2',label:'Gutter ball, 2nd ball',short:'Gutter 2nd'},
   {k:'openSingle',label:'Open on a single-pin spare',short:'Missed 1-pin'},
   {k:'foul',label:'Foul line violation',short:'Foul'},
-  {k:'splitCaused',label:'Split caused (7-10 or Greek Church)',short:'Big split left'}];
+  {k:'splitCaused',label:'Leave any split (7-10, 4-9, 3-10, Greek Church…)',short:'Split left'}];
 const BOUNTIES=[
   {k:'splitConv',label:'Split conversion',short:'Split made'},
   {k:'bigSplitConv',label:'Big split conversion (7-10, Greek Church, 4-6-7-10)',short:'Big split made'},
@@ -440,7 +440,7 @@ function autoJar(r,L){
     if(first){
       if(r[i]===0)ev.push({k:'gutter1',i});
       if(r[i]===10){streak++;if(streak===4)ev.push({k:'fourBagger',i})}else streak=0;
-      const m=L[i];if(typeof m==='number'&&r[i]<10){const b=bigKind(m);if(b==='7-10'||b==='Greek Church')ev.push({k:'splitCaused',i})}
+      const m=L[i];if(typeof m==='number'&&r[i]<10&&isSplit(m))ev.push({k:'splitCaused',i});
     }else{
       if(st===1&&r[i]===0)ev.push({k:'openSingle',i});
       else if(r[i]===0)ev.push({k:'gutter2',i});
