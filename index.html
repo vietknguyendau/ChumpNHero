@@ -228,6 +228,12 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .amtin input{width:86px;text-align:right}
 .jarline{margin:6px 0 0;font-size:.9rem}
 .chips.wrap{flex-wrap:wrap;overflow:visible}
+details.ledger{border:2px solid var(--line);border-radius:14px;padding:10px 12px;margin-top:10px;background:var(--surface)}
+details.ledger summary{display:flex;flex-direction:column}
+.ltable td{padding:8px 6px;font-size:.88rem;white-space:nowrap}
+.ltable td.amt{font-weight:800;text-align:right}
+.ltable td.pos,.stats b.pos{color:var(--teal)}.ltable td.neg,.stats b.neg{color:var(--red)}
+.atag{display:inline-block;font-size:.68rem;font-weight:800;border-radius:6px;padding:1px 5px;background:var(--line);color:var(--muted);vertical-align:1px}
 .dup{color:var(--teal);font-weight:800;font-size:.85em}
 .ddown{color:var(--red);font-weight:800;font-size:.85em}
 .dn{color:var(--muted);font-weight:700;font-size:.85em}
@@ -538,7 +544,7 @@ const evSum=evs=>evs.reduce((s,e)=>s+(isIn(e)?e.amt:-e.amt),0);
 function autoLive(){
   const ev=[];if(!S.live)return ev;
   LU().forEach(b=>{for(let g=0;g<S.games;g++){const r=getRolls(b.id,g);if(!r.length)continue;
-    autoJar(r,getLeaves(b.id,g)).forEach(a=>ev.push({id:`auto:${b.id}:${g}:${a.i}:${a.k}`,b:b.id,k:a.k,g,i:a.i,amt:amt(a.k),at:0,auto:true}))}});
+    const fr=frameOfRolls(r);autoJar(r,getLeaves(b.id,g)).forEach(a=>ev.push({id:`auto:${b.id}:${g}:${a.i}:${a.k}`,b:b.id,k:a.k,g,f:fr[a.i],i:a.i,amt:amt(a.k),at:0,auto:true}))}});
   return ev;
 }
 function liveJar(){
@@ -546,7 +552,7 @@ function liveJar(){
   const man=(S.live.jar||[]).filter(e=>!removedJar[e.id]).concat(pendingJar);
   let au=autoLive();
   if(amt('game200')>0)LU().forEach(b=>{for(let g=0;g<S.games;g++){const x=gameScore(b.id,g);
-    if(x&&x.complete&&x.v>=bigGame()&&!man.some(e=>e.b===b.id&&e.k==='game200'&&e.g===g))au.push({id:`auto:${b.id}:${g}:g200`,b:b.id,k:'game200',g,amt:amt('game200'),at:0,auto:true})}});
+    if(x&&x.complete&&x.v>=bigGame()&&!man.some(e=>e.b===b.id&&e.k==='game200'&&e.g===g))au.push({id:`auto:${b.id}:${g}:g200`,b:b.id,k:'game200',g,f:9,amt:amt('game200'),at:0,auto:true})}});
   if(S.bigSplitPot&&au.some(e=>e.k==='bigSplitConv')){
     const past=[];S.nights.forEach(n=>(n.jarEvents||[]).forEach(e=>past.push(e)));
     let base=evSum(past)+evSum(man)+evSum(au.filter(e=>e.k!=='bigSplitConv'));
@@ -893,6 +899,52 @@ function hdcpSection(){
   </details>`;
 }
 
+
+// ---- Transaction history ----
+let ledgerFor='all',ledgerOpen={};
+const when=e=>`G${(e.g||0)+1}${typeof e.f==='number'?` F${e.f+1}`:''}`;
+function sortEv(evs){return evs.slice().sort((a,b)=>(a.g||0)-(b.g||0)||(typeof a.f==='number'?a.f:99)-(typeof b.f==='number'?b.f:99)||(a.at||0)-(b.at||0))}
+function evRow(e,nightId,live){
+  const R=ruleOf(e.k,e),inj=isIn(e),buy=e.k==='buyin';
+  const del=live?(!e.auto&&!e.pending?`<button class="linkbtn danger" data-undojar="${e.id}">Undo</button>`:''):`<button class="linkbtn danger" data-rmn="${nightId}" data-rme="${e.id}">Remove</button>`;
+  return `<tr><td class="name">${esc(nameOf(e.b))}</td><td>${esc(R.short)}${e.auto?' <span class="atag">auto</span>':''}</td><td class="muted">${when(e)}</td><td class="${buy?'':inj?'neg':'pos'} amt">${buy?'Buy-in ':inj?'Paid ':'Won '}${money(e.amt)}</td><td>${del}</td></tr>`;
+}
+function nightTotals(evs){let tin=0,tout=0;evs.forEach(e=>{if(isIn(e))tin+=e.amt;else tout+=e.amt});return {tin,tout}}
+function summaryText(date,evs){
+  const per={};evs.forEach(e=>{const p=per[e.b]=per[e.b]||{paid:0,won:0,buy:0,items:{}};if(e.k==='buyin')p.buy+=e.amt;else if(isIn(e))p.paid+=e.amt;else p.won+=e.amt;const l=ruleOf(e.k,e).short;p.items[l]=(p.items[l]||0)+1});
+  const {tin,tout}=nightTotals(evs);
+  return `${S.team} jar, ${fmtDate(date)}\n`+Object.keys(per).map(b=>{const p=per[b],net=p.won-p.paid;return `${nameOf(b)}: ${net>=0?'+':'−'}${money(net)} (paid ${money(p.paid)}, won ${money(p.won)}${p.buy?`, buy-in ${money(p.buy)}`:''}). ${Object.entries(p.items).map(([k,n])=>n>1?`${k} ×${n}`:k).join(', ')}`}).join('\n')+`\nIn ${money(tin)}, out ${money(tout)}.`;
+}
+function ledgerBlock(){
+  const groups=[];
+  const nights=S.nights.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.created-b.created);
+  let bal=0;nights.forEach(n=>{const ev=n.jarEvents||[];const t=nightTotals(ev);bal+=t.tin-t.tout;groups.push({id:n.id,date:n.date,ev,bal,live:false})});
+  if(S.live){const ev=liveJar();const t=nightTotals(ev);groups.push({id:'live',date:S.live.date,ev,bal:bal+t.tin-t.tout,live:true})}
+  groups.reverse();
+  if(!groups.some(g=>g.ev.length))return '';
+  const ids=new Set();groups.forEach(g=>g.ev.forEach(e=>ids.add(e.b)));
+  const people=S.bowlers.filter(b=>ids.has(b.id)).concat([...ids].filter(id=>!S.bowlers.some(b=>b.id===id)).map(id=>({id,name:nameOf(id)})));
+  let h=`<h2>Transactions</h2><div class="chips wrap"><button class="chip" data-ledger="all" aria-pressed="${ledgerFor==='all'}">Everyone</button>${people.map(b=>`<button class="chip" data-ledger="${b.id}" aria-pressed="${ledgerFor===b.id}">${esc(b.name)}</button>`).join('')}</div>`;
+  if(ledgerFor!=='all'){
+    const all=groups.flatMap(g=>g.ev).filter(e=>e.b===ledgerFor),J=bowlerJar(all,ledgerFor);
+    h+=`<div class="stats" style="margin:8px 0 12px"><div><b>${money(J.paid)}</b><span>Fines paid</span></div><div><b>${money(J.won)}</b><span>Bounties won</span></div><div><b class="${J.net>0?'pos':J.net<0?'neg':''}">${smoney(J.net)}</b><span>Net</span></div></div>`;
+  }
+  groups.forEach((g,i)=>{
+    const ev=sortEv(ledgerFor==='all'?g.ev:g.ev.filter(e=>e.b===ledgerFor));if(!ev.length)return;
+    const t=nightTotals(ev),open=ledgerOpen[g.id]!==undefined?ledgerOpen[g.id]:i===0;
+    h+=`<details class="ledger" data-lg="${g.id}" ${open?'open':''}><summary><span>${esc(fmtDate(g.date))}${g.live?' <span class="tag c">tonight</span>':''}</span><span class="nsum">${ev.length} entr${ev.length===1?'y':'ies'}. In ${money(t.tin)}, out ${money(t.tout)}${ledgerFor==='all'?`. Jar after: ${g.bal<0?'−':''}${money(g.bal)}`:''}</span></summary>
+    <div class="tablewrap"><table class="ltable"><tbody>${ev.map(e=>evRow(e,g.id,g.live)).join('')}</tbody></table></div>
+    <button class="btn ghost" style="margin-top:8px;padding:8px 14px" data-copy="${g.id}">Copy summary</button></details>`;
+  });
+  return h;
+}
+function liveLog(){
+  const ev=liveJar();if(!ev.length)return '';
+  const rows=sortEv(ev).reverse();
+  return `<details class="lanesbox" id="liveLog" ${openNotes.log?'open':''}><summary>Tonight’s transactions (${ev.length})<span class="nsum">Every fine and bounty so far</span></summary><div class="tablewrap" style="margin-top:8px"><table class="ltable"><tbody>${rows.map(e=>evRow(e,'live',true)).join('')}</tbody></table></div>
+  <button class="btn ghost" style="margin-top:8px;padding:8px 14px" data-copy="live">Copy summary</button></details>`;
+}
+
 // ---- Chump & Hero ----
 function judge(night){
   const out=[];
@@ -1091,6 +1143,7 @@ function vLive(){
   h+=lineupBlock();
   h+=LU().map(card).join('');
   if(showScores)h+=`<label class="autosw"><input type="checkbox" id="autoSw" ${auto?'checked':''}> When scoring frames, jump to the next bowler after each frame</label>`;
+  h+=liveLog();
   h+=board();
   h+=`<div class="row" style="margin-top:18px;justify-content:space-between"><button class="btn" id="finishLive">Finish night</button><button class="linkbtn danger" id="cancelLive">Discard this night</button></div>`;
   return h;
@@ -1137,7 +1190,7 @@ function vJar(){
   const known=RULES.concat(customs()),stat=known.filter(R=>ev.some(e=>e.k===R.k));ev.forEach(e=>{if(!stat.some(R=>R.k===e.k))stat.push(ruleOf(e.k,e))});
   h+=`<h2>Jar stats</h2><div class="tablewrap"><table><thead><tr><th>Bowler</th>${stat.map(R=>`<th>${esc(R.short)}</th>`).join('')}</tr></thead><tbody>`;
   S.bowlers.forEach(b=>{h+=`<tr><td class="name">${esc(b.name)}</td>${stat.map(R=>{const n=ev.filter(e=>e.b===b.id&&e.k===R.k).length;return `<td>${n?`<span class="pill ${R.fine?'c':'h'}">${n}</span>`:'–'}</td>`}).join('')}</tr>`});
-  return h+`</tbody></table></div><p class="hint">Includes tonight while a night is in progress.</p>`;
+  return h+`</tbody></table></div><p class="hint">Includes tonight while a night is in progress.</p>`+ledgerBlock();
 }
 function vHistory(){
   if(!S.nights.length)return '<div class="empty"><p><b>Nothing here yet.</b></p><p>Every night you save lands here, newest first.</p></div>';
@@ -1274,6 +1327,18 @@ function wire(){
     quiet({action:'setNote',key:k,data:d},'Could not save the new line.');
   });
   all('[data-unshot]',btn=>btn.onclick=()=>{const b=btn.dataset.unshot,k=b+':'+lg;if(S.live.shots&&S.live.shots[k])S.live.shots[k]=S.live.shots[k].slice(0,-1);render();quiet({action:'removeShot',bowlerId:b,game:lg},'Could not undo that read.')});
+  all('[data-ledger]',b=>b.onclick=()=>{ledgerFor=b.dataset.ledger;render()});
+  all('[data-lg]',d=>d.ontoggle=()=>{ledgerOpen[d.dataset.lg]=d.open});
+  if($('liveLog'))$('liveLog').ontoggle=()=>{openNotes.log=$('liveLog').open};
+  all('[data-copy]',b=>b.onclick=async()=>{
+    const id=b.dataset.copy,n=id==='live'?null:S.nights.find(x=>x.id===id);
+    const txt=id==='live'?summaryText(S.live.date,liveJar()):summaryText(n.date,n.jarEvents||[]);
+    try{await navigator.clipboard.writeText(txt);toast('Summary copied. Paste it in your group chat.')}catch(e){prompt('Copy this summary:',txt)}
+  });
+  all('[data-rmn]',b=>b.onclick=()=>{
+    const n=S.nights.find(x=>x.id===b.dataset.rmn),e=n&&(n.jarEvents||[]).find(x=>x.id===b.dataset.rme);if(!e)return;
+    if(confirm(`Remove ${nameOf(e.b)}’s ${ruleOf(e.k,e).short} (${money(e.amt)}) from ${fmtDate(n.date)}?`))act({action:'removeNightJar',nightId:n.id,id:e.id},'Entry removed');
+  });
   all('[data-stat]',b=>b.onclick=()=>{statsFor=b.dataset.stat;render()});
   all('[data-add]',b=>b.onclick=()=>addJar(b.dataset.b,b.dataset.add));
   all('[data-undojar]',b=>b.onclick=()=>{const e=liveJar().find(x=>x.id===b.dataset.undojar);if(e)removeJar(e)});
