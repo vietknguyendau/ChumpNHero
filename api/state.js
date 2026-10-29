@@ -153,7 +153,7 @@ function autoJar(r,L){
     if(first){
       if(r[i]===0)ev.push({k:'gutter1',i});
       if(r[i]===10){streak++;if(streak===4)ev.push({k:'fourBagger',i})}else streak=0;
-      const m=L[i];if(typeof m==='number'&&r[i]<10){const b=bigKind(m);if(b==='7-10'||b==='Greek Church')ev.push({k:'splitCaused',i})}
+      const m=L[i];if(typeof m==='number'&&r[i]<10&&isSplit(m))ev.push({k:'splitCaused',i});
     }else{
       if(st===1&&r[i]===0)ev.push({k:'openSingle',i});
       else if(r[i]===0)ev.push({k:'gutter2',i});
