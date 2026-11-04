@@ -18,7 +18,7 @@ const DEFAULT_JAR = {
   chump: 0, buyin: 0,
 };
 const JAR_TAPS = ["gutter1", "gutter2", "openSingle", "foul", "splitCaused",
-  "splitConv", "bigSplitConv", "fourBagger", "clutch10", "game200", "buyin"];
+  "splitConv", "bigSplitConv", "fourBagger", "clutch10", "game200"]; // no buy-ins: the jar is only fines and bounties
 // Team-made buttons, e.g. {k:"c_ab12cd", label:"5-pin miss", fine:true, amt:0.5}
 function cleanCustom(list) {
   if (!Array.isArray(list)) return [];
@@ -46,6 +46,7 @@ function normalize(raw) {
   const saved = raw.jar || {}, jar = { ...DEFAULT_JAR };
   if (raw.fine) jar.chump = +raw.fine;
   for (const k of Object.keys(DEFAULT_JAR)) if (typeof saved[k] === "number") jar[k] = saved[k];
+  jar.buyin = 0;
   s.jar = jar;
   s.bigSplitPot = Boolean(raw.bigSplitPot);
   s.customJar = cleanCustom(raw.customJar);
@@ -144,7 +145,10 @@ function bigKind(m){for(const k in BIG)if(BIG[k]===m)return k.trim();return null
 const leaveName=m=>m===0?'clean':pinsOf(m).join('-');
 // Rolls of the 10th frame.
 function tenthRolls(r){let i=0;for(let f=0;f<9&&i<r.length;f++)i+=r[i]===10?1:2;return r.slice(i)}
-function clean10(r){const t=tenthRolls(r);if(t.length<2)return false;if(t[0]===10)return t[1]===10?t.length===3:t.length===3&&t[1]+t[2]===10;return t[0]+t[1]===10}
+// Clutch 10th, a clean finish: X X X, a strike then a spare (X 7 /), or a spare then a strike (9 / X).
+function clean10(r){const t=tenthRolls(r);if(t.length!==3)return false;
+  if(t[0]===10)return t[1]===10?t[2]===10:t[1]+t[2]===10;
+  return t[0]+t[1]===10&&t[2]===10}
 // Jar events the app can detect from the rolls (and pin leaves, when the pin deck was used).
 function autoJar(r,L){
   L=L||[];const ev=[];let streak=0;
@@ -209,6 +213,38 @@ async function readState() {
   };
 }
 
+// Jar entries that come from final scores: the big-game bounty and the Chump fine.
+// priorNights = nights before this one (for the entering average when Chump uses handicap).
+function scoreEvents(scores, jarEvents, settingsNow, priorNights, bowlersAll, games) {
+  const jar = settingsNow.jar;
+  if ((jar.game200 || 0) > 0) {
+    const thr = settingsNow.bigGame || 200;
+    for (const [id, arr] of Object.entries(scores)) arr.forEach((v, g) => {
+      if (typeof v === "number" && v >= thr && !jarEvents.some((e) => e.b === id && e.k === "game200" && e.g === g))
+        jarEvents.push({ id: uid(), b: id, k: "game200", g, f: 9, amt: jar.game200, at: Date.now() + 50, auto: true });
+    });
+  }
+  if ((jar.chump || 0) > 0) {
+    const hd = settingsNow.hdcp;
+    const hdcpFor = (id) => {
+      if (!hd.useForCH) return 0;
+      const b = bowlersAll.find((x) => x.id === id) || {};
+      let p = +b.sheetPins || 0, gm = +b.sheetGames || 0;
+      priorNights.forEach((n) => { if (hd.asOf && n.date <= hd.asOf) return; ((n.scores && n.scores[id]) || []).forEach((v) => { if (typeof v === "number") { p += v; gm++; } }); });
+      return gm ? Math.max(0, Math.floor(((hd.basis - Math.floor(p / gm)) * hd.pct) / 100)) : 0;
+    };
+    const adj = {};
+    for (const id of Object.keys(scores)) adj[id] = hdcpFor(id);
+    for (let g = 0; g < games; g++) {
+      const e = Object.entries(scores).filter(([, a]) => typeof a[g] === "number").map(([b, a]) => [b, a[g] + adj[b]]);
+      if (e.length < 2) continue;
+      const lo = Math.min(...e.map(([, v]) => v)), hi = Math.max(...e.map(([, v]) => v));
+      if (lo === hi) continue;
+      e.filter(([, v]) => v === lo).forEach(([b]) => jarEvents.push({ id: uid(), b, k: "chump", g, amt: jar.chump, at: Date.now() }));
+    }
+  }
+}
+
 const bad = (res, msg) => res.status(400).json({ error: msg });
 
 export default async function handler(req, res) {
@@ -228,7 +264,7 @@ export default async function handler(req, res) {
     if (action === "addBowler") {
       const name = String(body.name || "").trim().slice(0, 30);
       if (!name) return bad(res, "Name is required");
-      const b = { id: uid(), name, created: Date.now(), sheetPins: intIn(body.sheetPins, 100000), sheetGames: intIn(body.sheetGames, 1000) };
+      const b = { id: uid(), name, created: Date.now(), hand: body.hand === "L" || body.hand === "R" ? body.hand : "", sheetPins: intIn(body.sheetPins, 100000), sheetGames: intIn(body.sheetGames, 1000) };
       await redis.hset(K.bowlers, { [b.id]: JSON.stringify(b) });
     } else if (action === "setBases") {
       // Pins and games from the league sheet, as of a date. Nights logged after that date add on top.
@@ -251,6 +287,35 @@ export default async function handler(req, res) {
         cur.hdcpHistory = cur.hdcpHistory.filter((x) => x.asOf !== snap.asOf).concat([snap]).sort((a, b) => a.asOf.localeCompare(b.asOf)).slice(-40);
       }
       await redis.set(K.settings, JSON.stringify(cur));
+    } else if (action === "setHand") {
+      const raw = await redis.hget(K.bowlers, String(body.id || ""));
+      if (!raw) return bad(res, "That bowler wasn't found");
+      const b = parse(raw);
+      b.hand = body.hand === "L" || body.hand === "R" ? body.hand : "";
+      await redis.hset(K.bowlers, { [b.id]: JSON.stringify(b) });
+    } else if (action === "editNightScores") {
+      // Fix typed scores on a saved night. Games scored frame by frame stay as the frames say.
+      const raw = await redis.hget(K.nights, String(body.nightId || ""));
+      if (!raw) return bad(res, "That night wasn't found");
+      const n = parse(raw), settingsNow = await getSettings(), games = settingsNow.games;
+      const roster = values(await redis.hgetall(K.bowlers));
+      for (const [id, arr] of Object.entries(body.scores || {})) {
+        if (!roster.some((b) => b.id === id) || !Array.isArray(arr)) continue;
+        if (!n.scores[id]) n.scores[id] = Array(games).fill(null);
+        for (let g = 0; g < games; g++) {
+          if (n.rolls && n.rolls[id] && n.rolls[id][g]) continue;
+          const v = arr[g];
+          if (v === null || v === "" || v === undefined) n.scores[id][g] = null;
+          else if (+v >= 0 && +v <= 300) n.scores[id][g] = Math.round(+v);
+          else return bad(res, "Scores must be between 0 and 300");
+        }
+        if (Array.isArray(n.lineup) && !n.lineup.includes(id) && n.scores[id].some((v) => v !== null)) n.lineup.push(id);
+      }
+      // Redo the score-based jar entries for this night (taps are kept).
+      n.jarEvents = (n.jarEvents || []).filter((e) => e.k !== "chump" && !(e.k === "game200" && e.auto));
+      const prior = values(await redis.hgetall(K.nights)).filter((x) => x.id !== n.id && (x.date < n.date || (x.date === n.date && x.created < n.created)));
+      scoreEvents(n.scores, n.jarEvents, settingsNow, prior, roster, games);
+      await redis.hset(K.nights, { [n.id]: JSON.stringify(n) });
     } else if (action === "removeNightJar") {
       // Fix a mistake in a saved night's jar.
       const raw = await redis.hget(K.nights, String(body.nightId || ""));
@@ -375,7 +440,8 @@ export default async function handler(req, res) {
       } else {
         const [id, g] = String(body.key || "").split(":");
         if (!id || !(+g >= 0 && +g < 5)) return bad(res, "Bad note");
-        const n = { stand: num(d.stand, 1, 39), target: num(d.target, 1, 39), bp: num(d.bp, 1, 39), ball: txt(d.ball, 30), note: txt(d.note, 200), adjAt: +d.adjAt > 0 ? +d.adjAt : 0, lanes: {} };
+        const n = { stand: num(d.stand, 1, 39), target: num(d.target, 1, 39), bp: num(d.bp, 1, 39), ball: txt(d.ball, 30), note: txt(d.note, 200), adjAt: +d.adjAt > 0 ? +d.adjAt : 0, lanes: {},
+          cm: intIn(d.cm, 30), cx: intIn(d.cx, 30) }; // corner-pin spares made / missed, logged by tap
         // This bowler's own line and notes for each lane: foot board, mark at the arrows, breakpoint, note.
         for (const [l, x] of Object.entries(d.lanes || {}).slice(0, 2)) {
           if (num(l, 1, 200) === "" || !x) continue;
@@ -443,36 +509,7 @@ export default async function handler(req, res) {
           });
         });
       }
-      // Big-game bounty: every finished game at or above the cutoff (scratch), unless someone already tapped it.
-      if ((jar.game200 || 0) > 0) {
-        const thr = settingsNow.bigGame || 200;
-        for (const [id, arr] of Object.entries(scores)) arr.forEach((v, g) => {
-          if (typeof v === "number" && v >= thr && !jarEvents.some((e) => e.b === id && e.k === "game200" && e.g === g))
-            jarEvents.push({ id: uid(), b: id, k: "game200", g, f: 9, amt: jar.game200, at: Date.now() + 50, auto: true });
-        });
-      }
-      // Chump of each game pays the chump fine.
-      if (jar.chump > 0) {
-        // With "use handicap for Chump & Hero", compare score + handicap (handicap from the entering average).
-        const hd = settingsNow.hdcp, bowlersAll = values(await redis.hgetall(K.bowlers)), nightsAll = values(await_nights);
-        const hdcpFor = (id) => {
-          if (!hd.useForCH) return 0;
-          const b = bowlersAll.find((x) => x.id === id) || {};
-          let p = +b.sheetPins || 0, gm = +b.sheetGames || 0;
-          nightsAll.forEach((n) => { if (hd.asOf && n.date <= hd.asOf) return; ((n.scores && n.scores[id]) || []).forEach((v) => { if (typeof v === "number") { p += v; gm++; } }); });
-          return gm ? Math.max(0, Math.floor(((hd.basis - Math.floor(p / gm)) * hd.pct) / 100)) : 0;
-        };
-        const adj = {};
-        for (const id of Object.keys(scores)) adj[id] = hdcpFor(id);
-        for (let g = 0; g < games; g++) {
-          const e = Object.entries(scores).filter(([, a]) => typeof a[g] === "number").map(([b, a]) => [b, a[g] + adj[b]]);
-          if (e.length < 2) continue;
-          const lo = Math.min(...e.map(([, v]) => v)), hi = Math.max(...e.map(([, v]) => v));
-          if (lo === hi) continue;
-          e.filter(([, v]) => v === lo).forEach(([b]) =>
-            jarEvents.push({ id: uid(), b, k: "chump", g, amt: jar.chump, at: Date.now() }));
-        }
-      }
+      scoreEvents(scores, jarEvents, settingsNow, values(await_nights), values(await redis.hgetall(K.bowlers)), games);
       const notes = {};
       for (const [k, v] of Object.entries(notesRaw)) if (k === "lanes" || inLineup(k.split(":")[0])) notes[k] = parse(v);
       if (!Object.values(scores).some((x) => x.some((v) => v !== null)) && !jarEvents.length && Object.keys(notes).length === 0)
