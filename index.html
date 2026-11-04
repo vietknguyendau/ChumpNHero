@@ -218,6 +218,7 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .jarhead{border:2px solid var(--green);border-radius:18px;padding:16px 18px;background:var(--greenSoft);margin-bottom:14px}
 .jarbal{font-family:"Bowlby One",Impact,sans-serif;font-size:2.6rem;line-height:1.05;margin:4px 0;color:var(--green)}
 .jarbal.neg{color:var(--red)}
+.jarhead:has(.jarbal.neg){border-color:var(--red);background:var(--redSoft)}
 .rules{border:2px solid var(--line);border-radius:16px;padding:14px;background:var(--surface)}
 .rhead{display:flex;flex-direction:column;margin:16px 0 4px}
 .rhead:first-child{margin-top:0}
@@ -229,6 +230,31 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .amtin input{width:86px;text-align:right}
 .jarline{margin:6px 0 0;font-size:.9rem}
 .chips.wrap{flex-wrap:wrap;overflow:visible}
+.warnbox{margin:0 0 10px;border-left:4px solid var(--red);background:var(--redSoft);border-radius:0 10px 10px 0;padding:10px 12px;font-size:.9rem}
+.wk tr.noscore td{color:var(--muted);font-style:italic;text-align:left}
+.wk tr.noscore td.name{font-style:normal;color:var(--ink)}
+.wkin{width:50px!important;padding:6px 4px!important;text-align:center!important;-moz-appearance:textfield;appearance:textfield}
+.wkin::-webkit-inner-spin-button,.wkin::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+details.week summary{display:flex;flex-direction:column;cursor:pointer}
+details.week[open] summary{margin-bottom:10px}
+.wk th,.wk td{padding:7px 3px;text-align:right;white-space:nowrap;font-size:.86rem}
+.wk th{font-size:.72rem}
+.wk td.name{max-width:70px;overflow:hidden;text-overflow:ellipsis}
+.wk .pill{padding:1px 5px;min-width:0}
+.wk td:last-child,.wk th:last-child{padding-right:8px}
+.lastweek .tablewrap,details.week .tablewrap{margin:0 -4px}
+.wk th:first-child,.wk td:first-child{text-align:left}
+.wk td.pos{color:var(--green);font-weight:800}.wk td.neg{color:var(--red);font-weight:800}
+.lastweek{border:2px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:18px;background:var(--surface)}
+.hand{display:inline-block;font-family:Figtree,system-ui,sans-serif;font-size:.7rem;font-weight:800;border:2px solid var(--line);border-radius:6px;padding:0 5px;vertical-align:3px;color:var(--muted);letter-spacing:0}
+.corner{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding:8px 10px;border-radius:12px;background:var(--bg);font-size:.9rem}
+.cbtns{display:flex;gap:6px;align-items:center}
+.cb{border-radius:9px;padding:7px 12px;font-weight:800;cursor:pointer;border:2px solid transparent;touch-action:manipulation}
+.cb.ok{background:var(--greenSoft);color:var(--green)}
+.cb.no{background:var(--redSoft);color:var(--red)}
+.cornerbig{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:14px 0 0;padding:12px 14px;border:2px solid var(--line);border-radius:14px;background:var(--surface)}
+.cornerbig b{font-size:1.05rem}
+.handseg button{padding:6px 9px;font-size:.8rem}
 details.ledger{border:2px solid var(--line);border-radius:14px;padding:10px 12px;margin-top:10px;background:var(--surface)}
 details.ledger summary{display:flex;flex-direction:column}
 .ltable td{padding:8px 6px;font-size:.88rem;white-space:nowrap}
@@ -343,13 +369,17 @@ const BOUNTIES=[
   {k:'splitConv',label:'Split conversion',short:'Split made'},
   {k:'bigSplitConv',label:'Big split conversion (7-10, Greek Church, 4-6-7-10)',short:'Big split made'},
   {k:'fourBagger',label:'Four-bagger (Ham Turkey)',short:'4-bagger'},
-  {k:'clutch10',label:'Clutch 10th: strike or mark out',short:'Clutch 10th'},
+  {k:'clutch10',label:'Clutch 10th: X X X, X then a spare, or a spare then X',short:'Clutch 10th'},
   {k:'game200',get label(){return `Bowl a ${bigGame()}+ game`},get short(){return `${bigGame()} game`}}];
 FINES.forEach(r=>r.fine=true);BOUNTIES.forEach(r=>r.fine=false);
 const EXTRA=[{k:'chump',label:'Chump of the game (added when the night is saved)',short:'Chumps',fine:true},{k:'buyin',label:'Buy-in per bowler before Game 1',short:'Buy-ins',fine:true,buyin:true}];
 const RULES=[...FINES,...BOUNTIES,...EXTRA];
 const RULE=Object.fromEntries(RULES.map(r=>[r.k,r]));
 const bigGame=()=>+S.bigGame||200;
+// Handedness: '' until set. The corner pin is the 10 for righties, the 7 for lefties.
+const handOf=id=>{const b=S.bowlers.find(x=>x.id===id);return b&&b.hand||''};
+const cornerPin=id=>handOf(id)==='L'?7:10;
+const handBadge=id=>{const h=handOf(id);return h?`<span class="hand">${h}</span>`:''};
 const VIEWS=['tonight','standings','stats','jar','history','team'];
 let view=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'tonight';
 let loaded=false,loadError=false,busy=false,draft=null,quickOpen=false,editJar=false,newFine=true;
@@ -438,7 +468,10 @@ function bigKind(m){for(const k in BIG)if(BIG[k]===m)return k.trim();return null
 const leaveName=m=>m===0?'clean':pinsOf(m).join('-');
 // Rolls of the 10th frame.
 function tenthRolls(r){let i=0;for(let f=0;f<9&&i<r.length;f++)i+=r[i]===10?1:2;return r.slice(i)}
-function clean10(r){const t=tenthRolls(r);if(t.length<2)return false;if(t[0]===10)return t[1]===10?t.length===3:t.length===3&&t[1]+t[2]===10;return t[0]+t[1]===10}
+// Clutch 10th, a clean finish: X X X, a strike then a spare (X 7 /), or a spare then a strike (9 / X).
+function clean10(r){const t=tenthRolls(r);if(t.length!==3)return false;
+  if(t[0]===10)return t[1]===10?t[2]===10:t[1]+t[2]===10;
+  return t[0]+t[1]===10&&t[2]===10}
 // Jar events the app can detect from the rolls (and pin leaves, when the pin deck was used).
 function autoJar(r,L){
   L=L||[];const ev=[];let streak=0;
@@ -612,8 +645,8 @@ function moveText(prev,cur){
   return parts.join('; ');
 }
 // Mini lane: board 1 on the right (your gutter side), foot at the bottom, arrows in the middle, breakpoint at the top.
-function laneSvg(cur,prev){
-  const X=b=>152-(b-1)*(144/38),Y={foot:112,mark:66,bp:16};
+function laneSvg(cur,prev,lefty){
+  const X=b=>lefty?8+(b-1)*(144/38):152-(b-1)*(144/38),Y={foot:112,mark:66,bp:16};
   const pts=x=>['foot','mark','bp'].filter(k=>has(x[k])).map(k=>[X(+x[k]),Y[k]]);
   const path=ps=>ps.length>1?'M'+ps.map(p=>p.join(' ')).join(' L'):'';
   const cp=pts(cur),pp=pts(prev);
@@ -623,7 +656,7 @@ function laneSvg(cur,prev){
   if(path(pp))s+=`<path d="${path(pp)}" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="4 3"/>`;
   if(path(cp))s+=`<path d="${path(cp)}" fill="none" stroke="var(--teal)" stroke-width="3" stroke-linecap="round"/>`;
   cp.forEach(([x,y],i)=>{s+=`<circle cx="${x}" cy="${y}" r="5" fill="${y===Y.foot?'var(--gold)':'var(--teal)'}" stroke="var(--surface)" stroke-width="2"/>`});
-  s+=`<text x="150" y="122" font-size="7" text-anchor="end" fill="var(--muted)">1</text><text x="10" y="122" font-size="7" fill="var(--muted)">39</text></svg>`;
+  s+=lefty?`<text x="10" y="122" font-size="7" fill="var(--muted)">1</text><text x="150" y="122" font-size="7" text-anchor="end" fill="var(--muted)">39</text></svg>`:`<text x="150" y="122" font-size="7" text-anchor="end" fill="var(--muted)">1</text><text x="10" y="122" font-size="7" fill="var(--muted)">39</text></svg>`;
   return s;
 }
 const lanePair=()=>{const p=noteOf('lanes').pair;return p&&has(p[0])&&has(p[1])?p:null};
@@ -635,10 +668,10 @@ function notesBlock(b){
   let body='';
   if(pair){
     body+='<div class="lanecols">'+pair.map(l=>{const x=(n.lanes||{})[l]||{},pv=(prev.lanes||{})[l]||{};
-      return `<div class="lanecol"><b>Lane ${l}</b>${laneSvg(x,pv)}<div class="ngrid3">${numIn('foot','Foot',x.foot,pv.foot,'25',l)}${numIn('mark','Mark',x.mark,pv.mark,'12',l)}${numIn('bp','Break',x.bp,pv.bp,'7',l)}</div>
+      return `<div class="lanecol"><b>Lane ${l}</b>${laneSvg(x,pv,handOf(b.id)==='L')}<div class="ngrid3">${numIn('foot','Foot',x.foot,pv.foot,'25',l)}${numIn('mark','Mark',x.mark,pv.mark,'12',l)}${numIn('bp','Break',x.bp,pv.bp,'7',l)}</div>
       <label class="field">Your lane ${l} notes<input type="text" maxlength="200" data-nf="note" data-nk="${k}" data-nl="${l}" value="${esc(x.note||'')}" placeholder="${esc(pv.note?`G${lg}: ${pv.note}`:'e.g. reads early, need more speed')}"></label></div>`}).join('')+'</div>';
   } else {
-    body+=`<div class="lanecol solo">${laneSvg({foot:n.stand,mark:n.target,bp:n.bp},{foot:prev.stand,mark:prev.target,bp:prev.bp})}<div class="ngrid3">${numIn('stand','Foot',n.stand,prev.stand,'25')}${numIn('target','Mark',n.target,prev.target,'12')}${numIn('bp','Break',n.bp,prev.bp,'7')}</div></div>
+    body+=`<div class="lanecol solo">${laneSvg({foot:n.stand,mark:n.target,bp:n.bp},{foot:prev.stand,mark:prev.target,bp:prev.bp},handOf(b.id)==='L')}<div class="ngrid3">${numIn('stand','Foot',n.stand,prev.stand,'25')}${numIn('target','Mark',n.target,prev.target,'12')}${numIn('bp','Break',n.bp,prev.bp,'7')}</div></div>
     <p class="hint" style="margin:6px 0 0">Set your lanes at the top to track each lane separately.</p>`;
   }
   body+=`<div class="ngrid" style="margin-top:10px"><label class="field">Ball<input type="text" maxlength="30" data-nf="ball" data-nk="${k}" value="${esc(n.ball||'')}" placeholder="${esc(ph(prev.ball,'Ball name'))}"></label>
@@ -660,7 +693,7 @@ const laneFor=(pair,g,f)=>pair&&has(pair[0])&&has(pair[1])?((f+g)%2===0?pair[0]:
 // ---- Shot reads & next-frame tips ----
 const HITS=[{k:'brooklyn',label:'Brooklyn'},{k:'high',label:'High'},{k:'pocket',label:'Pocket'},{k:'light',label:'Light'},{k:'wayLight',label:'Missed light'}];
 const HITL=Object.fromEntries(HITS.map(h=>[h.k,h.label]));
-let xDraft={};
+let xDraft={},lastCorner={};
 const shotsOf=(b,g)=>(S.live&&S.live.shots&&S.live.shots[b+':'+g])||[];
 // The line a bowler planned on a lane this game (falls back to earlier games tonight).
 function lineFor(b,g,lane){
@@ -675,8 +708,10 @@ function readFrame(b,g){
   if(r.length){let last=0;for(let i=0;i<r.length;i++)if(nextBall(r.slice(0,i)).max===10)last=i;return Math.min(9,frameOfRolls(r)[last])}
   const s=shotsOf(b,g);return Math.min(9,s.length?s[s.length-1].f+1:0);
 }
-const inOut=d=>d>0?'in':'out';
+let tipHand='';
+const inOut=d=>tipHand==='R'?(d>0?'left':'right'):tipHand==='L'?(d>0?'right':'left'):(d>0?'in':'out');
 function tipFor(b){
+  tipHand=handOf(b);
   const pair=lanePair(),g=lg,s=shotsOf(b,g);
   const nextF=s.length?s[s.length-1].f+1:readFrame(b,g),ng=nextF>9?g+1:g;
   const lane=pair?laneFor(pair,ng,nextF%10):null,where=lane?` on lane ${lane}`:'';
@@ -689,7 +724,7 @@ function tipFor(b){
     text=`You moved to feet ${F}, mark ${M}${where}. Hit your new mark and read the next shot.`;
     short=`Next${where}: feet ${F}, mark ${M}`;
   } else if(M!==null&&Math.abs(missBy)>=2){
-    text=`Last shot${where} crossed board ${last.x}, ${Math.abs(missBy)} boards ${inOut(missBy)}side your mark. That’s a missed target, not a lane change. Stay put and hit ${M}.`;
+    text=`Last shot${where} crossed board ${last.x}, ${Math.abs(missBy)} boards ${tipHand?`${inOut(missBy)} of`:`${inOut(missBy)}side`} your mark. That’s a missed target, not a lane change. Stay put and hit ${M}.`;
     short=`Next${where}: stay, hit ${M}`;
   } else if(last.h==='pocket'){
     const twice=prev&&prev.h==='pocket';
@@ -719,21 +754,21 @@ function shotBlock(b){
   return `<details class="shot" data-shot="${b.id}" ${openNotes['s'+b.id]?'open':''}><summary>Read my shot${t.short?`<span class="nsum tipsum">${esc(t.short)}</span>`:''}</summary>
   <div class="tipbox"><p style="margin:0"><b>Tip</b> ${esc(t.text)}</p>${t.apply?`<button class="btn" style="margin-top:8px;padding:8px 14px" data-apply="${b.id}" data-al="${t.apply.lane||''}" data-af="${t.apply.foot}" data-am="${t.apply.mark}">Use this line: feet ${t.apply.foot}, mark ${t.apply.mark}</button>`:''}</div>
   <p class="readhd">Frame ${f+1}${lane?`, lane ${lane}`:''}: where did you cross the arrows?</p>
-  <div class="stepper"><button data-sx="-1" data-b="${b.id}" aria-label="One board out">−</button><span><b>${x}</b><small>${def!==null?(x===def?'on your mark':`${Math.abs(x-def)} ${x>def?'in':'out'} of ${def}`):'board'}</small></span><button data-sx="1" data-b="${b.id}" aria-label="One board in">+</button></div>
+  <div class="stepper"><button data-sx="-1" data-b="${b.id}" aria-label="One board ${handOf(b.id)==='R'?'right':handOf(b.id)==='L'?'left':'out'}">−</button><span><b>${x}</b><small>${def!==null?(x===def?'on your mark':`${Math.abs(x-def)} ${(tipHand=handOf(b.id),inOut(x-def))} of ${def}`):'board'}</small></span><button data-sx="1" data-b="${b.id}" aria-label="One board ${handOf(b.id)==='R'?'left':handOf(b.id)==='L'?'right':'in'}">+</button></div>
   <p class="readhd">How did it hit?</p>
   <div class="hits">${HITS.map(h=>`<button class="hitb ${h.k}" data-hit="${h.k}" data-b="${b.id}">${h.label}</button>`).join('')}</div>
   <div class="row" style="justify-content:space-between;margin-top:8px"><span class="muted" style="font-size:.82rem">${reads.length?`${reads.length} read${reads.length>1?'s':''} this game: ${reads.slice(-4).map(r=>HITL[r.h]).join(', ')}`:''}</span>${reads.length?`<button class="linkbtn" data-unshot="${b.id}">Undo last read</button>`:''}</div>
-  <p class="hint" style="margin:6px 0 0">In means higher board numbers, toward the middle. Out means toward your gutter. Tips are for the lane you bowl on next.</p></details>`;
+  <p class="hint" style="margin:6px 0 0">${handOf(b.id)?`Tips are for a ${handOf(b.id)==='L'?'left':'right'}-hander and the lane you bowl on next.`:'In means higher board numbers, toward the middle. Out means toward your gutter. Set R/L on the Team tab to get left/right tips.'}</p></details>`;
 }
 
 // ---- Stats ----
 // Every rack (fresh set of pins) a bowler has faced, oldest first.
 function bowlerRacks(id){
   const out=[];
-  const add=(r,L,g,pair,date)=>{const fr=frameOfRolls(r);L=L||[];
+  const add=(r,L,g,pair,date,live)=>{const fr=frameOfRolls(r);L=L||[];
     for(let i=0;i<r.length;i++){
       if(nextBall(r.slice(0,i)).max!==10)continue;
-      const x={first:r[i],strike:r[i]===10,leave:typeof L[i]==='number'?L[i]:(r[i]===10?0:null),standing:10-r[i],lane:laneFor(pair,g,fr[i]),date};
+      const x={first:r[i],strike:r[i]===10,leave:typeof L[i]==='number'?L[i]:(r[i]===10?0:null),standing:10-r[i],lane:laneFor(pair,g,fr[i]),date,live:!!live,g};
       if(r[i]<10&&i+1<r.length){x.made=r[i+1]===10-r[i]}
       out.push(x);
     }};
@@ -741,8 +776,17 @@ function bowlerRacks(id){
     if(!n.rolls||!n.rolls[id])return;const pair=n.notes&&n.notes.lanes&&n.notes.lanes.pair;
     n.rolls[id].forEach((r,g)=>{if(r)add(r,n.leaves&&n.leaves[id]&&n.leaves[id][g],g,pair,n.date)});
   });
-  if(S.live){const pair=noteOf('lanes').pair;for(let g=0;g<S.games;g++){const r=getRolls(id,g);if(r.length)add(r,getLeaves(id,g),g,pair,S.live.date)}}
+  if(S.live){const pair=noteOf('lanes').pair;for(let g=0;g<S.games;g++){const r=getRolls(id,g);if(r.length)add(r,getLeaves(id,g),g,pair,S.live.date,true)}}
   return out;
+}
+// Corner-pin spares: pin-deck leaves of just that pin, plus Made/Missed taps logged on the card.
+function cornerStats(id,tonightOnly){
+  const p=cornerPin(id),m=bit(p);let made=0,att=0;
+  bowlerRacks(id).forEach(x=>{if(tonightOnly&&!x.live)return;if(x.made!==undefined&&x.leave===m){att++;if(x.made)made++}});
+  const tally=n=>{if(!n)return;made+=+n.cm||0;att+=(+n.cm||0)+(+n.cx||0)};
+  if(!tonightOnly)S.nights.forEach(n=>{for(let g=0;g<5;g++)tally(n.notes&&n.notes[id+':'+g])});
+  if(S.live)for(let g=0;g<S.games;g++)tally(noteOf(id+':'+g));
+  return {pin:p,made,att};
 }
 const leaveLabel=m=>{const b=bigKind(m);if(b)return b;return popcount(m)===1?pinsOf(m)[0]+'-pin':leaveName(m)};
 function statsOf(rk){
@@ -783,11 +827,16 @@ function heatmap(pp){
 function vStats(){
   if(!S.bowlers.length)return '<div class="empty"><p><b>Add bowlers first.</b></p></div>';
   if(!statsFor||!S.bowlers.some(b=>b.id===statsFor))statsFor=S.bowlers[0].id;
-  let h='<div class="chips" style="margin-top:4px">'+S.bowlers.map(b=>`<button class="chip" data-stat="${b.id}" aria-pressed="${b.id===statsFor}">${esc(b.name)}</button>`).join('')+'</div>';
+  let h='';
+  const cr=S.bowlers.map(b=>({b,c:cornerStats(b.id)})).filter(o=>o.c.att);
+  if(cr.length)h+=`<h2 style="margin-top:4px">Corner pins</h2><div class="tablewrap"><table><thead><tr><th>Bowler</th><th>Pin</th><th>Made</th><th>Rate</th></tr></thead><tbody>${cr.sort((a,b)=>b.c.made/b.c.att-a.c.made/a.c.att).map(({b,c})=>`<tr><td class="name">${esc(b.name)} ${handBadge(b.id)}</td><td>${c.pin}</td><td>${c.made} of ${c.att}</td><td><b>${pct(c.made,c.att)}</b></td></tr>`).join('')}</tbody></table></div><p class="hint">Righties: single 10-pin spares. Lefties: single 7-pin spares.</p>`;
+  h+='<div class="chips" style="margin-top:14px">'+S.bowlers.map(b=>`<button class="chip" data-stat="${b.id}" aria-pressed="${b.id===statsFor}">${esc(b.name)}</button>`).join('')+'</div>';
   const rk=bowlerRacks(statsFor);
   if(!rk.length)return h+avgHistory(statsFor)+'<div class="empty"><p><b>No frames yet.</b></p><p>Stats come from games scored frame by frame. On bowl night, turn on “Track scores and frames” and score a game by frames. Use the pin deck for split and pin-by-pin stats.</p></div>'+journal();
   const s=statsOf(rk),al=alertsOf(rk);
   h+=`<div class="stats stats4"><div><b>${pct(s.strikes,s.fb)}</b><span>Strikes</span></div><div><b>${pct(s.spares.made,s.spares.att)}</b><span>Spares</span></div><div><b>${pct(s.single.made,s.single.att)}</b><span>Single-pin</span></div><div><b>${pct(s.splits.made,s.splits.att)}</b><span>Splits</span></div></div>`;
+  const cs=cornerStats(statsFor);
+  h+=`<div class="cornerbig"><span>${cs.pin}-pin spares${handOf(statsFor)?` <small class="muted">(${handOf(statsFor)==='L'?'lefty':'righty'} corner)</small>`:''}</span><b>${cs.att?`${cs.made} of ${cs.att}, ${pct(cs.made,cs.att)}`:'No tries yet'}</b></div>`;
   h+=`<h2>Trouble spots</h2>`+(al.length?`<div class="alerts">${al.map(a=>`<p class="alert">${esc(a.text)}</p>`).join('')}</div>`:'<p class="muted">Nothing worrying right now. Alerts show up when misses start repeating.</p>');
   h+=`<h2>Spare conversion</h2><div class="tablewrap"><table><thead><tr><th>Leave</th><th>Made</th><th>Tries</th><th>Rate</th></tr></thead><tbody>`+
     [['Single pin',s.single],['Multi-pin',s.multi],['Splits',s.splits],['All spares',s.spares]].map(([l,x])=>`<tr><td class="name">${l}</td><td>${x.made}</td><td>${x.att}</td><td><b>${pct(x.made,x.att)}</b></td></tr>`).join('')+'</tbody></table></div>';
@@ -882,22 +931,27 @@ function matchBowler(name){
   return c.length===1?c[0]:null;
 }
 function hdcpSection(){
-  const h=H();
-  const rows=S.bowlers.map(b=>{const a=avgOf(b.id);return `<tr><td class="name">${esc(b.name)}</td><td><input type="number" inputmode="numeric" min="0" class="tin" data-bp="${b.id}" value="${b.sheetPins||''}" placeholder="0" aria-label="${esc(b.name)} sheet pins"></td><td><input type="number" inputmode="numeric" min="0" class="tin sm" data-bg="${b.id}" value="${b.sheetGames||''}" placeholder="0" aria-label="${esc(b.name)} sheet games"></td><td>${a.avg===null?'–':a.avg}${(()=>{const lc=lastChange(b.id);return lc?`<small class="dline">${arrow(lc.dAvg,true)}</small>`:''})()}</td><td><b>${a.avg===null?'–':hdcpOf(a.avg)}</b>${(()=>{const lc=lastChange(b.id);return lc?`<small class="dline">${arrow(lc.dHdcp)}</small>`:''})()}</td></tr>`}).join('');
+  const h=H(),anySheet=S.bowlers.some(b=>+b.sheetGames>0);
+  const rows=S.bowlers.map(b=>{const a=avgOf(b.id),logged=a.games-(+b.sheetGames||0),lc=lastChange(b.id);
+    return `<tr><td class="name">${esc(b.name)} ${handBadge(b.id)}</td><td>${a.games||'–'}${logged>0?`<small class="dline muted">+${logged} here</small>`:''}</td><td>${a.avg===null?'–':a.avg}${lc?`<small class="dline">${arrow(lc.dAvg,true)}</small>`:''}</td><td><b>${a.avg===null?'–':hdcpOf(a.avg)}</b>${lc?`<small class="dline">${arrow(lc.dHdcp)}</small>`:''}</td></tr>`}).join('');
+  const sheetRows=S.bowlers.map(b=>`<tr><td class="name">${esc(b.name)}</td><td><input type="number" inputmode="numeric" min="0" class="tin" data-bp="${b.id}" value="${b.sheetPins||''}" placeholder="0" aria-label="${esc(b.name)} sheet pins"></td><td><input type="number" inputmode="numeric" min="0" class="tin sm" data-bg="${b.id}" value="${b.sheetGames||''}" placeholder="0" aria-label="${esc(b.name)} sheet games"></td></tr>`).join('');
   return `<h2>Averages &amp; handicap</h2>
-  <p class="hint" style="margin-top:0">Enter each bowler’s total pins and games from your league sheet. Nights you log here after the sheet date are added on top.</p>
-  <div class="ngrid3" style="max-width:420px"><label class="field">Handicap %<input type="number" id="hPct" min="0" max="100" value="${h.pct}"></label><label class="field">Of basis<input type="number" id="hBasis" min="100" max="300" value="${h.basis}"></label><label class="field">Sheet date<input type="date" id="hAsOf" value="${esc(h.asOf)}"></label></div>
-  <p class="hint">Handicap = ${h.pct}% of (${h.basis} − average). Averages and handicaps drop the decimals, like the league sheet.</p>
-  <div class="tablewrap" style="margin-top:8px"><table class="hdtable"><thead><tr><th>Bowler</th><th>Sheet pins</th><th>Games</th><th>Avg</th><th>HDCP</th></tr></thead><tbody>${rows}</tbody></table></div>
+  ${anySheet&&!h.asOf?'<p class="warnbox"><b>Set the sheet date.</b> Without it, every night logged here is added on top of the sheet, even nights the sheet already counts, and week-by-week changes can’t show. Open “League sheet numbers” below.</p>':''}
+  <div class="tablewrap"><table class="hdtable"><thead><tr><th>Bowler</th><th>Games</th><th>Avg</th><th>HDCP</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <p class="hint">Games, averages and handicaps update as soon as a night is saved. “+3 here” means 3 games logged in this app since the sheet${h.asOf?` (${esc(fmtDate(h.asOf))})`:''}. Handicap = ${h.pct}% of (${h.basis} − average), decimals dropped.</p>
   <label class="autosw"><input type="checkbox" id="hUse" ${h.useForCH?'checked':''}> Use handicap scores for Chump &amp; Hero</label>
-  <div class="row" style="margin-top:12px"><button class="btn" id="saveH">Save averages &amp; handicap</button></div>
+  <details class="sheets" id="sheetBox" ${openNotes.sheet||(anySheet&&!h.asOf)||!anySheet?'open':''}><summary>League sheet numbers</summary>
+  <p class="hint">Each bowler’s total pins and games from the league sheet, and the date on the sheet.</p>
+  <div class="ngrid3" style="max-width:420px"><label class="field">Handicap %<input type="number" id="hPct" min="0" max="100" value="${h.pct}"></label><label class="field">Of basis<input type="number" id="hBasis" min="100" max="300" value="${h.basis}"></label><label class="field">Sheet date<input type="date" id="hAsOf" value="${esc(h.asOf)}"></label></div>
+  <div class="tablewrap" style="margin-top:8px"><table class="hdtable"><thead><tr><th>Bowler</th><th>Sheet pins</th><th>Sheet games</th></tr></thead><tbody>${sheetRows}</tbody></table></div>
+  <div class="row" style="margin-top:12px"><button class="btn" id="saveH">Save sheet numbers</button></div>
   <details class="sheets" id="impBox" ${importMsg?'open':''}><summary>Paste from the league sheet</summary>
   <p class="hint">Copy rows like “Viet Nguyendau 3070 18 170 27” (name, pins, games, then anything). Names are matched to your roster by full or first name. Set the sheet date above first.</p>
   <textarea id="impText" rows="5" placeholder="Viet Nguyendau 3070 18 170 27"></textarea>
   <div class="row" style="margin-top:8px"><button class="btn ghost" id="impGo">Import and save</button></div>
   ${importMsg?`<p class="hint">${esc(importMsg)}</p>`:''}
   ${importMiss.length?`<p class="hint">Not on your roster: ${esc(importMiss.map(x=>x.name).join(', '))}</p><button class="btn ghost" id="impAdd">Add ${importMiss.length} to roster with their numbers</button>`:''}
-  </details>`;
+  </details></details>`;
 }
 
 
@@ -993,7 +1047,7 @@ function vTonight(){
   [...pick].forEach(id=>{if(!S.bowlers.some(b=>b.id===id))pick.delete(id)});
   const last=S.nights.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created).find(n=>Array.isArray(n.lineup));
   const lastIds=last?last.lineup.filter(id=>S.bowlers.some(b=>b.id===id)):[];
-  return spotlight()+`<h2 style="margin-top:4px">Tonight</h2><div class="lane"><p style="margin:0 0 10px"><b>Who’s bowling?</b> <span class="muted">${pick.size} of ${S.bowlers.length} picked</span></p>
+  return spotlight()+lastWeekCard()+`<h2 style="margin-top:4px">Tonight</h2><div class="lane"><p style="margin:0 0 10px"><b>Who’s bowling?</b> <span class="muted">${pick.size} of ${S.bowlers.length} picked</span></p>
   <div class="chips wrap">${S.bowlers.map(b=>`<button class="chip" data-pick="${b.id}" aria-pressed="${pick.has(b.id)}">${pick.has(b.id)?'✓ ':''}${esc(b.name)}</button>`).join('')}</div>
   <div class="row" style="gap:16px;margin:4px 0 14px"><button class="linkbtn" data-pickall="1">Everyone</button>${lastIds.length?`<button class="linkbtn" data-picklast="1">Same as last night (${lastIds.length})</button>`:''}</div>
   <p style="margin:0 0 12px" class="muted">Everyone picked gets fine and bounty buttons. Anyone on the team can tap them from their own phone.</p><div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:150px">Date<input type="date" id="liveDate" value="${today()}"></label><button class="btn" id="startLive">Start night</button></div></div>`+
@@ -1060,7 +1114,7 @@ function card(b){
          :`<input type="number" inputmode="numeric" min="0" max="300" class="gin" data-tb="${b.id}" data-tg="${g}" value="${x?x.v:''}" placeholder="–" aria-label="${esc(b.name)} game ${g+1} score">`)+'</div>';
   }
   scores+=`<div class="gs ser"><span class="gl">Series</span><b>${series||'–'}</b></div></div>`;
-  let h=`<section class="bcard${padFor===b.id?' open':''}" id="card-${b.id}"><div class="bhead"><h3>${esc(b.name)}${(()=>{const a=avgOf(b.id).avg;const lc=lastChange(b.id);return a===null?'':`<small class="avgline">Avg ${a}${lc?' '+arrow(lc.dAvg,true):''}, HDCP ${hdcpOf(a)}${lc?' '+arrow(lc.dHdcp):''}</small>`})()}</h3><span class="bjar ${J.net>0?'pos':J.net<0?'neg':''}">${J.paid||J.won?smoney(J.net):'$0.00'}</span></div>`;
+  let h=`<section class="bcard${padFor===b.id?' open':''}" id="card-${b.id}"><div class="bhead"><h3>${esc(b.name)} ${handBadge(b.id)}${(()=>{const a=avgOf(b.id).avg;const lc=lastChange(b.id);return a===null?'':`<small class="avgline">Avg ${a}${lc?' '+arrow(lc.dAvg,true):''}, HDCP ${hdcpOf(a)}${lc?' '+arrow(lc.dHdcp):''}</small>`})()}</h3><span class="bjar ${J.net>0?'pos':J.net<0?'neg':''}">${J.paid||J.won?smoney(J.net):'$0.00'}</span></div>`;
   const al=alertsOf(bowlerRacks(b.id))[0];
   if(al)h+=`<p class="heads"><b>Heads up</b> ${esc(al.text)}</p>`;
   h+=`<div class="jrow"><span class="jt">Fines</span><div class="jbs">${activeF.map(chip).join('')||'<span class="muted">All fines are off</span>'}</div></div>`;
@@ -1078,8 +1132,11 @@ function card(b){
   }
   const last=evs.filter(e=>!e.auto).sort((a,b)=>b.at-a.at)[0];
   const foot=[];
-  if(amt('buyin')>0){const paidB=count('buyin');foot.push(paidB?`<span class="paidb">Bought in ${money(amt('buyin'))} ✓</span>`:`<button class="jb buy" data-add="buyin" data-b="${b.id}"><span class="jl">Buy-in</span><span class="ja">${money(amt('buyin'))}</span></button>`)}
+  // No buy-ins: the jar starts empty and only fills from fines.
   if(last)foot.push(`<button class="linkbtn" data-undojar="${last.id}">Undo ${esc(ruleOf(last.k,last).short)}</button>`);
+  {const cs=cornerStats(b.id,true),deckGame=getLeaves(b.id,lg).some(x=>typeof x==='number'),n=noteOf(b.id+':'+lg);
+   h+=`<div class="corner"><span>${cs.pin}-pin tonight <b>${cs.att?`${cs.made} of ${cs.att}`:'–'}</b>${handOf(b.id)?'':' <small class="muted">(set R/L on Team)</small>'}</span>`+
+     (deckGame?`<small class="muted">Auto from pin deck</small>`:`<span class="cbtns"><button class="cb ok" data-corner="m" data-b="${b.id}">Made</button><button class="cb no" data-corner="x" data-b="${b.id}">Missed</button>${(+n.cm||0)+(+n.cx||0)?`<button class="linkbtn" data-corner="u" data-b="${b.id}" aria-label="Undo last ${cs.pin}-pin entry">Undo</button>`:''}</span>`)+'</div>'}
   h+=shotBlock(b);
   h+=notesBlock(b);
   if(foot.length)h+=`<div class="bfoot">${foot.join('')}</div>`;
@@ -1137,7 +1194,7 @@ function vLive(){
   if(padFor&&!LU().some(b=>b.id===padFor))padFor=null;
   sel=padFor;
   const bal=jarBalance();
-  let h=`<div class="livebar"><div><div class="muted" style="font-size:.85rem">Bowling now</div><div class="date">${esc(fmtDate(L.date))}</div></div><div class="jarnow"><span>Jar now</span><b class="${bal<0?'neg':''}">${bal<0?'−':''}${money(bal)}</b></div></div>`;
+  let h=`<div class="livebar"><div><div class="muted" style="font-size:.85rem">Bowling now</div><div class="date">${esc(fmtDate(L.date))}</div></div><div class="jarnow"><span>${bal<0?'Jar is short':'Jar now'}</span><b class="${bal<0?'neg':''}">${money(bal)}</b></div></div>`;
   h+='<div class="gtabs" role="tablist" aria-label="Current game">'+Array.from({length:S.games},(_,g)=>`<button role="tab" data-g="${g}" aria-selected="${g===lg}">Game ${g+1}${showScores?`<small>Team ${teamGame(g)}</small>`:''}</button>`).join('')+'</div>';
   h+=lanesBlock();
   h+=`<label class="autosw" style="margin:0 0 14px"><input type="checkbox" id="scoreSw" ${showScores?'checked':''}> Track scores and frames (needed for Stats)</label>`;
@@ -1162,7 +1219,7 @@ function vStandings(){
 function vJar(){
   const J=S.jar||{},bal=jarBalance(),ev=allEvents(true);
   const tin=ev.filter(e=>isIn(e)).reduce((a,e)=>a+e.amt,0),tout=ev.filter(e=>!isIn(e)).reduce((a,e)=>a+e.amt,0);
-  let h=`<div class="jarhead"><div class="muted">In the jar right now</div><div class="jarbal ${bal<0?'neg':''}">${bal<0?'−':''}${money(bal)}</div><div class="muted" style="font-size:.88rem">${money(tin)} paid in, ${money(tout)} paid out this season</div></div>`;
+  let h=`<div class="jarhead"><div class="muted">${bal<0?'The jar is short':'In the jar right now'}</div><div class="jarbal ${bal<0?'neg':''}">${money(bal)}</div>${bal<0?'<p class="hint" style="margin:2px 0 6px">Bounties have outpaced fines. What’s owed gets paid out as fines come in.</p>':''}<div class="muted" style="font-size:.88rem">${money(tin)} paid in, ${money(tout)} paid out this season</div></div>`;
   const row=R=>{
     if(editJar)return `<label class="rulerow edit"><span>${R.label}</span><span class="amtin">$<input type="number" min="0" step="0.25" inputmode="decimal" data-jar="${R.k}" value="${(+J[R.k]||0).toFixed(2)}"></span></label>`;
     const pot=R.k==='bigSplitConv'&&S.bigSplitPot;
@@ -1176,7 +1233,6 @@ function vJar(){
     :`<div class="rulerow"><span><span class="kind ${x.fine?'f':'w'}">${x.fine?'Fine':'Bounty'}</span> ${esc(x.label)}</span><span class="row" style="gap:12px;flex-wrap:nowrap"><b>${x.amt?money(x.amt):'Off'}</b><button class="linkbtn danger" data-delc="${x.k}" aria-label="Delete ${esc(x.label)}">Delete</button></span></div>`).join('')
     :'<p class="muted" style="margin:6px 0">None yet.</p>';
   if(!editJar)h+=`<div class="addc"><input type="text" id="cName" maxlength="24" placeholder="Button name, e.g. 5-pin miss"><div class="row" style="gap:8px;flex-wrap:nowrap"><div class="seg" role="group" aria-label="Fine or bounty"><button type="button" data-ftype="1" aria-pressed="${newFine}">Fine</button><button type="button" data-ftype="0" aria-pressed="${!newFine}">Bounty</button></div><span class="amtin">$<input type="number" id="cAmt" min="0" step="0.25" inputmode="decimal" value="0.50"></span></div><button class="btn" id="addC">Add button</button></div>`;
-  h+=`<div class="rhead"><b>Setup</b></div>${row(RULE.buyin)}`;
   if(editJar){
     h+=`<label class="rulerow edit"><span>Score that earns the big-game bounty</span><span class="amtin"><input type="number" min="100" max="300" step="1" inputmode="numeric" id="bigGameIn" value="${bigGame()}"></span></label>`;
     h+=`<label class="rulerow edit"><span>Big split conversion takes the whole jar (pot clean)</span><input type="checkbox" id="potClean" ${S.bigSplitPot?'checked':''}></label>`;
@@ -1187,15 +1243,59 @@ function vJar(){
   const anyBuy=ev.some(e=>e.k==='buyin');
   h+=`<h2>Who’s paying</h2><div class="tablewrap"><table><thead><tr><th>Bowler</th><th>Fines</th><th>Bounties</th><th>Net</th>${anyBuy?'<th>Buy-ins</th>':''}</tr></thead><tbody>`;
   S.bowlers.map(b=>({b,J:bowlerJar(ev,b.id)})).sort((a,c)=>c.J.net-a.J.net).forEach(({b,J})=>{h+=`<tr><td class="name">${esc(b.name)}</td><td>${money(J.paid)}</td><td>${money(J.won)}</td><td class="net ${J.net>0?'pos':J.net<0?'neg':''}">${smoney(J.net)}</td>${anyBuy?`<td>${money(J.buy)}</td>`:''}</tr>`});
-  h+=`</tbody></table></div><p class="hint">Net is bounties collected minus fines paid. Buy-ins seed the jar and don’t count against anyone.</p>`;
+  h+=`</tbody></table></div><p class="hint">Net is bounties collected minus fines paid.${anyBuy?' Buy-ins from earlier nights are listed separately.':''}</p>`;
   const known=RULES.concat(customs()),stat=known.filter(R=>ev.some(e=>e.k===R.k));ev.forEach(e=>{if(!stat.some(R=>R.k===e.k))stat.push(ruleOf(e.k,e))});
   h+=`<h2>Jar stats</h2><div class="tablewrap"><table><thead><tr><th>Bowler</th>${stat.map(R=>`<th>${esc(R.short)}</th>`).join('')}</tr></thead><tbody>`;
   S.bowlers.forEach(b=>{h+=`<tr><td class="name">${esc(b.name)}</td>${stat.map(R=>{const n=ev.filter(e=>e.b===b.id&&e.k===R.k).length;return `<td>${n?`<span class="pill ${R.fine?'c':'h'}">${n}</span>`:'–'}</td>`}).join('')}</tr>`});
   return h+`</tbody></table></div><p class="hint">Includes tonight while a night is in progress.</p>`+ledgerBlock();
 }
+
+// ---- Weekly scorecards ----
+let weekOpen={};
+function weekData(n){
+  const G=S.games,set=new Set(Array.isArray(n.lineup)?n.lineup:[]);
+  Object.keys(n.scores||{}).forEach(id=>{if((n.scores[id]||[]).some(v=>typeof v==='number'))set.add(id)});
+  const ids=[...set];
+  const order=S.bowlers.map(b=>b.id);ids.sort((a,b)=>(order.indexOf(a)+1||99)-(order.indexOf(b)+1||99));
+  const j=judge(n);
+  const rows=ids.map(id=>{
+    const sc=((n.scores||{})[id]||[]).slice(0,G),games=sc.filter(v=>typeof v==='number');
+    const series=games.reduce((a,v)=>a+v,0),avg=avgOf(id,n).avg,hd=hdcpOf(avg);
+    const none=!games.length;
+    return {id,sc,series:none?null:series,games:games.length,avg,hd,none,vs:avg===null||none?null:series-avg*games.length,hs:hd===null||none?null:series+hd*games.length};
+  });
+  const team=[];for(let g=0;g<G;g++){let s=0,any=false;rows.forEach(r=>{if(typeof r.sc[g]==='number'){s+=r.sc[g];any=true}});team.push(any?s:null)}
+  const teamH=[];for(let g=0;g<G;g++){let s=0,any=false;rows.forEach(r=>{if(typeof r.sc[g]==='number'){s+=r.sc[g]+(r.hd||0);any=true}});teamH.push(any?s:null)}
+  let high=null;rows.forEach(r=>r.sc.forEach(v=>{if(typeof v==='number'&&(!high||v>high.v))high={id:r.id,v}}));
+  return {rows,team,teamH,j,high,series:team.reduce((a,v)=>a+(v||0),0),seriesH:teamH.reduce((a,v)=>a+(v||0),0),scored:rows.filter(r=>!r.none).length};
+}
+let editWeek=null;
+function weekTable(n,canEdit){
+  const d=weekData(n),G=S.games;if(!d.rows.length)return '';
+  if(canEdit&&editWeek===n.id){
+    let e=`<div class="tablewrap"><table class="wk"><thead><tr><th>Bowler</th>${Array.from({length:G},(_,g)=>`<th>G${g+1}</th>`).join('')}</tr></thead><tbody>`;
+    d.rows.forEach(r=>{e+=`<tr><td class="name">${esc(nameOf(r.id))}</td>${Array.from({length:G},(_,g)=>{const fr=n.rolls&&n.rolls[r.id]&&n.rolls[r.id][g],v=r.sc[g];
+      return fr?`<td title="Scored frame by frame">${typeof v==='number'?v:'–'}<small class="muted" style="display:block;font-size:.65rem">frames</small></td>`:`<td><input type="number" inputmode="numeric" min="0" max="300" class="tin sm wkin" data-ew="${r.id}" data-eg="${g}" value="${typeof v==='number'?v:''}" placeholder="–" aria-label="${esc(nameOf(r.id))} game ${g+1}"></td>`}).join('')}</tr>`});
+    return e+`</tbody></table></div><p class="hint">Leave a box empty if they didn’t bowl that game. Saving updates averages, handicaps, Hero &amp; Chump and the 200 game bounty for this night.</p><div class="row"><button class="btn" data-savewk="${n.id}">Save scores</button><button class="btn ghost" data-cancelwk="1">Cancel</button></div>`;
+  }
+  const pill=(g,id,v)=>{const x=d.j[g];if(!x||x.tie)return v;return x.heroes.includes(id)?`<span class="pill h">${v}</span>`:x.chumps.includes(id)?`<span class="pill c">${v}</span>`:v};
+  let h=`<div class="tablewrap"><table class="wk"><thead><tr><th>Bowler</th>${Array.from({length:G},(_,g)=>`<th>G${g+1}</th>`).join('')}<th>Series</th><th>±Avg</th><th>HDCP</th></tr></thead><tbody>`;
+  d.rows.forEach(r=>{if(r.none){h+=`<tr class="noscore"><td class="name">${esc(nameOf(r.id))}</td><td colspan="${G+3}">No scores saved</td></tr>`;return}
+    h+=`<tr><td class="name">${esc(nameOf(r.id))}</td>${r.sc.map((v,g)=>`<td>${typeof v==='number'?pill(g,r.id,v):'–'}</td>`).join('')}${Array.from({length:Math.max(0,G-r.sc.length)},()=>'<td>–</td>').join('')}<td><b>${r.series}</b></td><td class="${r.vs>0?'pos':r.vs<0?'neg':''}">${r.vs===null?'–':(r.vs>0?'+':r.vs<0?'−':'±')+Math.abs(r.vs)}</td><td>${r.hs===null?'–':r.hs}</td></tr>`});
+  h+=`<tr class="teamrow"><td class="name">Team</td>${d.team.map(v=>`<td>${v===null?'–':v}</td>`).join('')}<td><b>${d.series}</b></td><td></td><td>${d.seriesH}</td></tr></tbody></table></div>`;
+  if(canEdit)h+=`<div class="row" style="margin-top:8px;justify-content:space-between"><span class="muted" style="font-size:.85rem">${d.scored} of ${d.rows.length} bowlers have scores</span><button class="btn ghost" style="padding:8px 14px" data-editwk="${n.id}">Edit scores</button></div>`;
+  return h;
+}
+function weekSummary(n){const d=weekData(n);if(!d.rows.length)return 'No scores this week';if(!d.scored)return `${d.rows.length} bowlers, no scores saved`;return `${d.rows.length} bowlers. Team ${d.series.toLocaleString()}${d.seriesH!==d.series?`, ${d.seriesH.toLocaleString()} with HDCP`:''}${d.high?`. High game: ${nameOf(d.high.id)} ${d.high.v}`:''}`}
+function lastWeekCard(){
+  const n=S.nights.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created)[0];
+  if(!n||!weekData(n).rows.length)return '';
+  return `<div class="lastweek"><div class="row" style="justify-content:space-between;align-items:baseline"><b>Last week</b><button class="linkbtn" data-go="history">All weeks</button></div><p class="muted" style="margin:2px 0 8px;font-size:.88rem">${esc(fmtDate(n.date))}. ${esc(weekSummary(n))}.</p>${weekTable(n)}</div>`;
+}
 function vHistory(){
   if(!S.nights.length)return '<div class="empty"><p><b>Nothing here yet.</b></p><p>Every night you save lands here, newest first.</p></div>';
-  return '<h2 style="margin-top:4px">History</h2>'+S.nights.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created).map(n=>{
+  const sorted=S.nights.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created);
+  return '<h2 style="margin-top:4px">Week by week</h2><p class="hint" style="margin-top:0">Gold is the Hero of each game, red is the Chump. “±Avg” is pins over or under what your average predicted for that many games. HDCP is the handicap series.</p>'+sorted.map((n,idx)=>{
     let gs='';
     judge(n).forEach((x,i)=>{
       if(!x){gs+=`<div class="game"><b>G${i+1}</b><span class="muted">Not enough scores</span></div>`;return}
@@ -1216,11 +1316,14 @@ function vHistory(){
       if(ln&&ln.notes)Object.entries(ln.notes).forEach(([l,t])=>{if(t)rows.push(`<p class="jarline">Team, lane ${l}: ${esc(t)}</p>`)});
       Object.keys(n.notes).filter(k=>k!=='lanes').sort().forEach(k=>{const [b,g]=k.split(':'),x=n.notes[k],s1=lineSummary(x),ln=Object.entries(x.lanes||{}).filter(([,y])=>y.note).map(([l,y])=>` Lane ${l}: ${esc(y.note)}.`).join('');if(s1||x.note||ln)rows.push(`<p class="jarline"><b>${esc(nameOf(b))} G${+g+1}</b> ${esc(s1)}${x.note?`. ${esc(x.note)}`:''}${ln?`<br><span class="muted">${ln.trim()}</span>`:''}</p>`)});
       if(rows.length)nts=`<details class="sheets"><summary>Lines &amp; lane notes</summary>${rows.join('')}</details>`}
-    return `<div class="night"><div class="row" style="justify-content:space-between"><span class="date">${esc(fmtDate(n.date))}</span><button class="btn danger" data-del="${n.id}">Delete</button></div><div class="games">${gs}</div>${jar}${nts}${sheets?`<details class="sheets"><summary>Scoresheets</summary>${sheets}</details>`:''}</div>`;
+    const open=editWeek===n.id||(weekOpen[n.id]!==undefined?weekOpen[n.id]:idx===0),wt=weekTable(n,true);
+    return `<details class="night week" data-wk="${n.id}" ${open?'open':''}><summary><span class="date">${esc(fmtDate(n.date))}</span><span class="nsum">${esc(weekSummary(n))}</span></summary>
+    ${wt||`<div class="games">${gs}</div>`}${jar}${nts}${sheets?`<details class="sheets"><summary>Scoresheets</summary>${sheets}</details>`:''}
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="linkbtn danger" data-del="${n.id}">Delete this night</button></div></details>`;
   }).join('');
 }
 function vTeam(){
-  const list=S.bowlers.length?S.bowlers.map(b=>`<div class="bowler"><span>${esc(b.name)}</span><button class="btn danger" data-rm="${b.id}">Remove</button></div>`).join(''):'<p class="muted">No bowlers yet.</p>';
+  const list=S.bowlers.length?S.bowlers.map(b=>`<div class="bowler"><span>${esc(b.name)}</span><span class="row" style="gap:10px;flex-wrap:nowrap"><span class="seg handseg" role="group" aria-label="${esc(b.name)} bowls"><button data-hand="R" data-b="${b.id}" aria-pressed="${b.hand==='R'}">Righty</button><button data-hand="L" data-b="${b.id}" aria-pressed="${b.hand==='L'}">Lefty</button></span><button class="btn danger" data-rm="${b.id}">Remove</button></span></div>`).join(''):'<p class="muted">No bowlers yet.</p>';
   return `<h2 style="margin-top:4px">Roster</h2><p class="hint" style="margin-top:0">Everyone on the team, subs included. You pick who’s bowling each night on the Bowl night tab.</p>${list}<div class="row" style="margin-top:14px"><input type="text" id="newName" placeholder="Bowler name" maxlength="30" style="flex:1;min-width:160px"><button class="btn" id="addB">Add bowler</button></div>`+
     `${hdcpSection()}<h2>League settings</h2><label class="field" style="max-width:220px">Games per night<input type="number" id="setGames" min="1" max="5" value="${S.games}"></label><p class="hint">Saves as soon as you change it. Jar fines and bounties are set on the Jar tab.</p>`+
     (S.pinRequired?`<h2>Team PIN</h2><p class="hint" style="margin-top:0">Your team requires a PIN to make changes. This phone asks for it the first time you save. Use this if the PIN changed.</p><button class="btn ghost" id="changePin">Change PIN on this phone</button>`:'');
@@ -1297,7 +1400,7 @@ function wire(){
     inp.onchange=()=>{const k=inp.dataset.nk,old=noteOf(k),d={lanes:Object.assign({},old.lanes||{})};
       all(`[data-nk="${k}"]`,x=>{if(x.dataset.nl){const l=x.dataset.nl;d.lanes[l]=Object.assign({},d.lanes[l]||{});d.lanes[l][x.dataset.nf]=x.value.trim()}else d[x.dataset.nf]=x.value.trim()});
       if(!root.querySelector(`[data-nk="${k}"][data-nf="stand"]`)){d.stand=old.stand;d.target=old.target;d.bp=old.bp}
-      d.adjAt=old.adjAt;
+      d.adjAt=old.adjAt;d.cm=old.cm;d.cx=old.cx;
       if(!S.live.notes)S.live.notes={};S.live.notes[k]=d;quiet({action:'setNote',key:k,data:d},'Could not save that note.')};
     inp.onkeydown=e=>{if(e.key==='Enter')inp.blur()};
     inp.onblur=()=>setTimeout(()=>{if(!typing())render()},50);
@@ -1308,6 +1411,15 @@ function wire(){
       if(!S.live.notes)S.live.notes={};S.live.notes.lanes={pair,notes};quiet({action:'setNote',key:'lanes',data:{pair,notes}},'Could not save the lanes.')};
     inp.onkeydown=e=>{if(e.key==='Enter')inp.blur()};
     inp.onblur=()=>setTimeout(()=>{if(!typing())render()},50);
+  });
+  all('[data-corner]',btn=>btn.onclick=()=>{
+    const b=btn.dataset.b,k=b+':'+lg,old=noteOf(k),d=Object.assign({},old,{lanes:Object.assign({},old.lanes||{})}),a=btn.dataset.corner;
+    d.cm=+old.cm||0;d.cx=+old.cx||0;
+    if(a==='m')d.cm++;else if(a==='x')d.cx++;else{const last=lastCorner[b];if(last==='x'&&d.cx)d.cx--;else if(last==='m'&&d.cm)d.cm--;else if(d.cx)d.cx--;else if(d.cm)d.cm--}
+    lastCorner[b]=a==='u'?null:a;
+    if(!S.live.notes)S.live.notes={};S.live.notes[k]=d;render();
+    if(a!=='u')toast(`${nameOf(b)}: ${cornerPin(b)}-pin ${a==='m'?'made':'missed'}`);
+    quiet({action:'setNote',key:k,data:d},'Could not save that.');
   });
   all('[data-shot]',d=>d.ontoggle=()=>{openNotes['s'+d.dataset.shot]=d.open});
   all('[data-sx]',btn=>btn.onclick=()=>{const b=btn.dataset.b,pair=lanePair(),f=readFrame(b,lg),lane=pair?laneFor(pair,lg,f):null,def=lineFor(b,lg,lane).mark;
@@ -1328,6 +1440,15 @@ function wire(){
     quiet({action:'setNote',key:k,data:d},'Could not save the new line.');
   });
   all('[data-unshot]',btn=>btn.onclick=()=>{const b=btn.dataset.unshot,k=b+':'+lg;if(S.live.shots&&S.live.shots[k])S.live.shots[k]=S.live.shots[k].slice(0,-1);render();quiet({action:'removeShot',bowlerId:b,game:lg},'Could not undo that read.')});
+  all('[data-editwk]',b=>b.onclick=()=>{editWeek=b.dataset.editwk;weekOpen[editWeek]=true;render()});
+  all('[data-cancelwk]',b=>b.onclick=()=>{editWeek=null;render()});
+  all('[data-savewk]',b=>b.onclick=async()=>{
+    const scores={};let bad=false;
+    all('[data-ew]',i=>{const v=i.value.trim();if(v!==''&&!(+v>=0&&+v<=300)){i.classList.add('bad');bad=true}(scores[i.dataset.ew]=scores[i.dataset.ew]||Array(S.games).fill(null))[+i.dataset.eg]=v===''?null:Math.round(+v)});
+    if(bad){toast('Scores must be between 0 and 300.');return}
+    if(await act({action:'editNightScores',nightId:b.dataset.savewk,scores},'Scores saved. Averages and handicaps updated.')){editWeek=null;render()}
+  });
+  all('[data-wk]',d=>d.ontoggle=()=>{weekOpen[d.dataset.wk]=d.open});
   all('[data-ledger]',b=>b.onclick=()=>{ledgerFor=b.dataset.ledger;render()});
   all('[data-lg]',d=>d.ontoggle=()=>{ledgerOpen[d.dataset.lg]=d.open});
   if($('liveLog'))$('liveLog').ontoggle=()=>{openNotes.log=$('liveLog').open};
@@ -1368,12 +1489,16 @@ function wire(){
   all('[data-delc]',b=>b.onclick=()=>{const x=(S.customJar||[]).find(c=>c.k===b.dataset.delc);if(x&&confirm(`Delete the “${x.label}” button? Taps already logged stay in the jar.`))act({action:'settings',customJar:S.customJar.filter(c=>c.k!==x.k)},'Button deleted')});
   // team
   if($('addB')){const add=()=>{const n=$('newName').value.trim();if(n)act({action:'addBowler',name:n},n+' added')};$('addB').onclick=add;$('newName').onkeydown=e=>{if(e.key==='Enter')add()}}
+  all('[data-hand]',btn=>btn.onclick=()=>{const b=S.bowlers.find(x=>x.id===btn.dataset.b);if(!b)return;const h=b.hand===btn.dataset.hand?'':btn.dataset.hand;b.hand=h;render();quiet({action:'setHand',id:b.id,hand:h},'Could not save that.')});
   all('[data-rm]',b=>b.onclick=()=>{const nm=nameOf(b.dataset.rm);if(confirm('Remove '+nm+'? Their past scores stay in history.'))act({action:'removeBowler',id:b.dataset.rm},nm+' removed')});
   all('[data-del]',b=>b.onclick=()=>{if(confirm('Delete this night?'))act({action:'deleteNight',id:b.dataset.del},'Night deleted')});
+  if($('sheetBox'))$('sheetBox').ontoggle=()=>{openNotes.sheet=$('sheetBox').open};
+  if($('hUse'))$('hUse').onchange=()=>act({action:'settings',hdcp:{useForCH:$('hUse').checked}},$('hUse').checked?'Chump & Hero now use handicap scores':'Chump & Hero now use scratch scores');
   if($('saveH'))$('saveH').onclick=async()=>{
     const entries=S.bowlers.map(b=>({id:b.id,pins:(root.querySelector(`[data-bp="${b.id}"]`)||{}).value||0,games:(root.querySelector(`[data-bg="${b.id}"]`)||{}).value||0}));
     const hd={pct:$('hPct').value,basis:$('hBasis').value,asOf:$('hAsOf').value,useForCH:$('hUse').checked};
-    if(await act({action:'setBases',entries,hdcp:hd},'Averages & handicap saved')){importMsg='';importMiss=[];render()}
+    if(!hd.asOf&&!confirm('No sheet date set. Every night logged here will be added on top of these numbers. Save anyway?'))return;
+    if(await act({action:'setBases',entries,hdcp:hd},'Sheet numbers saved')){importMsg='';importMiss=[];render()}
   };
   if($('impBox'))$('impBox').ontoggle=()=>{if(!$('impBox').open){importMsg='';importMiss=[]}};
   if($('impGo'))$('impGo').onclick=async()=>{
