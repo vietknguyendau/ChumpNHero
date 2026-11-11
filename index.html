@@ -150,6 +150,12 @@ h2{font-size:1.35rem;margin:26px 0 12px}
 .pad button:active:not(:disabled){transform:scale(.96)}
 .pad .strike{background:var(--red);border-color:var(--red);color:#fff}
 .pad .spare{background:var(--btn);border-color:var(--btn);color:#fff}
+.pad .wide{grid-column:span 2}
+.pad .zero{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05;padding:8px 0}
+.pad .zero small{font-size:.62rem;font-weight:700;color:var(--muted)}
+.pad .gut{border-color:var(--red)}.pad .foul{border-color:var(--gold)}
+.deckzero{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:.88rem}
+.cb.gut{background:var(--redSoft);color:var(--red)}.cb.miss{background:var(--surface);color:var(--ink);border-color:var(--line)}.cb.foul{background:var(--goldSoft);color:var(--ink)}
 .pad button:disabled{opacity:.25;cursor:not-allowed}
 .linkbtn{background:none;border:0;color:var(--teal);font-weight:600;cursor:pointer;padding:6px 0;text-decoration:underline}
 .linkbtn.danger{color:var(--red)}
@@ -322,7 +328,7 @@ details.shot summary{font-size:.92rem}
 .leave{font-weight:800;border-radius:8px;padding:3px 9px;background:var(--surface);border:2px solid var(--line)}
 .leave.split{border-color:var(--gold);color:var(--gold)}
 .leave.big{background:var(--red);border-color:var(--red);color:#fff}
-.deckbtns{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:8px}
+.deckbtns{display:grid;grid-template-columns:1.6fr 1fr;gap:8px}
 .deckbtns .btn{padding:12px 8px}
 .jb.auto{opacity:.55;cursor:default}
 .jb.auto .ja{color:var(--muted)!important;font-weight:800}
@@ -361,7 +367,7 @@ details *,details *::before,details *::after{box-sizing:border-box}
 let S={team:'Our Team',games:3,jar:{},bigSplitPot:false,customJar:[],bowlers:[],nights:[],live:null,pinRequired:false};
 const FINES=[
   {k:'gutter1',label:'Gutter ball, 1st ball',short:'Gutter 1st'},
-  {k:'gutter2',label:'Gutter ball, 2nd ball',short:'Gutter 2nd'},
+  {k:'gutter2',label:'Gutter ball on a spare attempt',short:'Gutter 2nd'},
   {k:'openSingle',label:'Open on a single-pin spare',short:'Missed 1-pin'},
   {k:'foul',label:'Foul line violation',short:'Foul'},
   {k:'splitCaused',label:'Leave any split (7-10, 4-9, 3-10, Greek Church…)',short:'Split left'}];
@@ -450,7 +456,8 @@ function scoreGame(r){
 // A leave is a 10-bit mask of pins still standing: bit (p-1) set = pin p standing.
 const ALL_PINS=1023;
 const PIN_ROWS=[[7,8,9,10],[4,5,6],[2,3],[1]];
-const ADJ={1:[2,3],2:[1,3,4,5],3:[1,2,5,6],4:[2,5,7,8],5:[2,3,4,6,8,9],6:[3,5,9,10],7:[4,8],8:[4,5,7,9],9:[5,6,8,10],10:[6,9]};
+// Pins that count as connected: touching neighbors, plus "double wood" (one pin directly behind another: 1-5, 2-8, 3-9).
+const ADJ={1:[2,3,5],2:[1,3,4,5,8],3:[1,2,5,6,9],4:[2,5,7,8],5:[1,2,3,4,6,8,9],6:[3,5,9,10],7:[4,8],8:[2,4,5,7,9],9:[3,5,6,8,10],10:[6,9]};
 const bit=p=>1<<(p-1);
 const pinsOf=m=>{const o=[];for(let p=1;p<=10;p++)if(m&bit(p))o.push(p);return o};
 const maskOf=ps=>ps.reduce((m,p)=>m|bit(p),0);
@@ -473,17 +480,19 @@ function clean10(r){const t=tenthRolls(r);if(t.length!==3)return false;
   if(t[0]===10)return t[1]===10?t[2]===10:t[1]+t[2]===10;
   return t[0]+t[1]===10&&t[2]===10}
 // Jar events the app can detect from the rolls (and pin leaves, when the pin deck was used).
-function autoJar(r,L){
-  L=L||[];const ev=[];let streak=0;
+// M marks how a 0 happened: 'g' gutter, 'm' miss (stayed on the lane), 'f' foul. Only a real gutter is a gutter fine.
+function autoJar(r,L,M){
+  L=L||[];M=M||[];const ev=[];let streak=0;
   for(let i=0;i<r.length;i++){
     const st=nextBall(r.slice(0,i)).max,first=st===10;
+    if(M[i]==='f')ev.push({k:'foul',i});
     if(first){
-      if(r[i]===0)ev.push({k:'gutter1',i});
+      if(r[i]===0&&M[i]==='g')ev.push({k:'gutter1',i});
       if(r[i]===10){streak++;if(streak===4)ev.push({k:'fourBagger',i})}else streak=0;
       const m=L[i];if(typeof m==='number'&&r[i]<10&&isSplit(m))ev.push({k:'splitCaused',i});
     }else{
       if(st===1&&r[i]===0)ev.push({k:'openSingle',i});
-      else if(r[i]===0)ev.push({k:'gutter2',i});
+      if(r[i]===0&&M[i]==='g')ev.push({k:'gutter2',i});
       const m=L[i-1];if(typeof m==='number'&&isSplit(m)&&r[i]===st)ev.push({k:bigKind(m)?'bigSplitConv':'splitConv',i});
     }
   }
@@ -525,16 +534,17 @@ async function load(){
 }
 
 // ---- live frames (saved per bowler + game) ----
-function getLive(b,g){const k=b+':'+g;if(ov[k])return ov[k];const x=S.live&&S.live.rolls[k];if(!x)return {rolls:[],L:[]};return Array.isArray(x)?{rolls:x,L:[]}:{rolls:x.r||[],L:x.L||[]}}
+function getLive(b,g){const k=b+':'+g;if(ov[k])return ov[k];const x=S.live&&S.live.rolls[k];if(!x)return {rolls:[],L:[],M:[]};return Array.isArray(x)?{rolls:x,L:[],M:[]}:{rolls:x.r||[],L:x.L||[],M:x.M||[]}}
+const getMarks=(b,g)=>getLive(b,g).M||[];
 const getRolls=(b,g)=>getLive(b,g).rolls;
 const getLeaves=(b,g)=>getLive(b,g).L||[];
-function setRolls(b,g,r,L){L=(L||getLeaves(b,g)).slice(0,r.length);ov[b+':'+g]={rolls:r,L,ver:++ver,dirty:true};clearTimeout(flushT);flushT=setTimeout(flush,250)}
+function setRolls(b,g,r,L,M){L=(L||getLeaves(b,g)).slice(0,r.length);M=(M||getMarks(b,g)).slice(0,r.length);ov[b+':'+g]={rolls:r,L,M,ver:++ver,dirty:true};clearTimeout(flushT);flushT=setTimeout(flush,250)}
 async function flush(){
   if(flushing)return;flushing=true;
   for(;;){
     const k=Object.keys(ov).find(k=>ov[k].dirty);if(!k)break;
     const o=ov[k];o.dirty=false;const v=o.ver;const [b,g]=k.split(':');
-    const x=await post({action:'setRolls',bowlerId:b,game:+g,rolls:o.rolls,leaves:o.L});
+    const x=await post({action:'setRolls',bowlerId:b,game:+g,rolls:o.rolls,leaves:o.L,marks:o.M});
     if(x.ok){S=x.d;if(ov[k]&&ov[k].ver===v)delete ov[k]}
     else{toast(x.d.error||'Could not save that roll.');delete ov[k];break}
   }
@@ -544,14 +554,14 @@ function advance(){
   deckUp=new Set();const ids=LU().map(b=>b.id);const i=ids.indexOf(sel);
   for(let s=1;s<=ids.length;s++){const id=ids[(i+s)%ids.length];if(!nextBall(getRolls(id,lg)).done){sel=padFor=id;return}}
 }
-function roll(n,mask){
+function roll(n,mask,mk){
   const r=getRolls(sel,lg).slice(),nb=nextBall(r);
   if(nb.done||n>nb.max)return;
-  const before=autoJar(r,getLeaves(sel,lg)).length;
-  const L=getLeaves(sel,lg).slice(0,r.length);
-  r.push(n);L[r.length-1]=typeof mask==='number'?mask:null;deckUp=new Set();
-  setRolls(sel,lg,r,L);
-  const fresh=autoJar(r,L).slice(before).filter(e=>amt(e.k)>0||(e.k==='bigSplitConv'&&S.bigSplitPot));
+  const before=autoJar(r,getLeaves(sel,lg),getMarks(sel,lg)).length;
+  const L=getLeaves(sel,lg).slice(0,r.length),M=getMarks(sel,lg).slice(0,r.length);
+  r.push(n);L[r.length-1]=typeof mask==='number'?mask:null;M[r.length-1]=n===0?(mk||'m'):null;deckUp=new Set();
+  setRolls(sel,lg,r,L,M);
+  const fresh=autoJar(r,L,M).slice(before).filter(e=>amt(e.k)>0||(e.k==='bigSplitConv'&&S.bigSplitPot));
   const done=scoreGame(r);
   if(done.complete&&done.total>=bigGame()&&amt('game200')>0)fresh.push({k:'game200'});
   if(fresh.length)toast(fresh.map(e=>{const R=ruleOf(e.k);return `${R.short}! ${R.fine?'Pay':'Collect'} ${e.k==='bigSplitConv'&&S.bigSplitPot?'the jar':money(amt(e.k))}`}).join('  ·  ')+' (auto)');
@@ -578,7 +588,7 @@ const evSum=evs=>evs.reduce((s,e)=>s+(isIn(e)?e.amt:-e.amt),0);
 function autoLive(){
   const ev=[];if(!S.live)return ev;
   LU().forEach(b=>{for(let g=0;g<S.games;g++){const r=getRolls(b.id,g);if(!r.length)continue;
-    const fr=frameOfRolls(r);autoJar(r,getLeaves(b.id,g)).forEach(a=>ev.push({id:`auto:${b.id}:${g}:${a.i}:${a.k}`,b:b.id,k:a.k,g,f:fr[a.i],i:a.i,amt:amt(a.k),at:0,auto:true}))}});
+    const fr=frameOfRolls(r);autoJar(r,getLeaves(b.id,g),getMarks(b.id,g)).forEach(a=>ev.push({id:`auto:${b.id}:${g}:${a.i}:${a.k}`,b:b.id,k:a.k,g,f:fr[a.i],i:a.i,amt:amt(a.k),at:0,auto:true}))}});
   return ev;
 }
 function liveJar(){
@@ -597,7 +607,7 @@ function liveJar(){
 function autoSet(b){
   const r=getRolls(b,lg);
   if(!r.length){const s=new Set();if(gameScore(b,lg))s.add('game200');return s}
-  const s=new Set(['gutter1','gutter2','openSingle','fourBagger','clutch10','game200']);
+  const s=new Set(['gutter1','gutter2','openSingle','fourBagger','clutch10','game200','foul']);
   if(getLeaves(b,lg).some(x=>typeof x==='number'))['splitCaused','splitConv','bigSplitConv'].forEach(k=>s.add(k));
   return s;
 }
@@ -1063,12 +1073,13 @@ function totalsForm(){
 }
 // Where each roll's mark sits on the sheet: frame f, box p.
 function rollPos(r){const out=[];let i=0;for(let f=0;f<9&&i<r.length;f++){if(r[i]===10){out[i]={f,p:1};i++}else{out[i]={f,p:0};if(i+1<r.length)out[i+1]={f,p:1};i+=2}}for(let k=0;i<r.length;k++,i++)out[i]={f:9,p:k};return out}
-function sheet(sc,nb,small,r,L){
-  const circ={};
+function sheet(sc,nb,small,r,L,M){
+  const circ={},mk={};
+  if(r&&M){const pos=rollPos(r);M.forEach((x,i)=>{if((x==='g'||x==='f')&&pos[i])mk[pos[i].f+':'+pos[i].p]=x==='g'?'G':'F'})}
   if(r&&L){const pos=rollPos(r);L.forEach((m,i)=>{if(typeof m==='number'&&r[i]<10&&nextBall(r.slice(0,i)).max===10&&isSplit(m)&&pos[i])circ[pos[i].f+':'+pos[i].p]=1})}
   return `<div class="frames${small?' small':''}">`+sc.frames.map((f,i)=>{
     const m=f.m.slice();while(m.length<(i===9?3:2))m.push('');
-    return `<div class="fr${nb&&!nb.done&&nb.frame===i?' cur':''}"><div class="no">${i+1}</div><div class="mk">${m.map((x,p)=>`<span class="${x==='X'?'x':x==='/'?'sp':''}">${circ[i+':'+p]?`<i class="splitmk">${x}</i>`:x}</span>`).join('')}</div><div class="cum">${f.c===null?'':f.c}</div></div>`;
+    return `<div class="fr${nb&&!nb.done&&nb.frame===i?' cur':''}"><div class="no">${i+1}</div><div class="mk">${m.map((x,p)=>`<span class="${x==='X'?'x':x==='/'?'sp':''}">${(()=>{const y=mk[i+':'+p]||x;return circ[i+':'+p]?`<i class="splitmk">${y}</i>`:y})()}</span>`).join('')}</div><div class="cum">${f.c===null?'':f.c}</div></div>`;
   }).join('')+'</div>';
 }
 function availMask(r,L){const nb=nextBall(r);if(nb.done)return null;if(nb.max===10)return ALL_PINS;const p=L[r.length-1];return typeof p==='number'?p:null}
@@ -1085,7 +1096,8 @@ function deckView(nb,r,L){
   if(first&&up){const bk=bigKind(up);tag=bk?`<span class="leave big">${bk}${bk==='4-6-7-10'?' split':''}</span>`:isSplit(up)?`<span class="leave split">${leaveName(up)} split</span>`:`<span class="leave">${popcount(up)===1?pinsOf(up)[0]+'-pin':leaveName(up)}</span>`}
   const recLabel=first&&down===10?'Record strike':!first&&up===0?'Record spare':`Record ${down} down`;
   return `<p class="hint" style="margin:0 0 8px">Tap the pins still standing, then record.</p>${tri}<div class="deckinfo">${tag||'<span></span>'}<span class="muted">${down} down, ${popcount(up)} standing</span></div>
-  <div class="deckbtns"><button class="btn" data-deckrec="1">${recLabel}</button><button class="btn ghost" data-deckall="none">${first?'Gutter':'Missed all'}</button><button class="btn ghost" data-deckall="all">${first?'Strike':'Spare'}</button></div>
+  <div class="deckbtns"><button class="btn" data-deckrec="1">${recLabel}</button><button class="btn ghost" data-deckall="all">${first?'Strike':'Spare'}</button></div>
+  <div class="deckzero"><span class="muted">No pins:</span><button class="cb gut" data-deckall="none" data-mk="g">Gutter</button><button class="cb miss" data-deckall="none" data-mk="m">Miss</button><button class="cb foul" data-deckall="none" data-mk="f">Foul</button></div>
   <div class="row" style="margin-top:10px;justify-content:space-between"><button class="btn ghost" id="undo" ${r.length?'':'disabled'}>Undo</button>${auto?'<button class="linkbtn" id="nextB">Skip to next bowler</button>':''}</div>`;
 }
 function entry(nb,r,L){
@@ -1094,8 +1106,9 @@ function entry(nb,r,L){
 function pad(nb,r){
   if(nb.done)return `<div class="row" style="margin-top:12px"><button class="btn ghost" id="undo">Undo last roll</button>${auto?'<button class="btn" id="nextB">Next bowler</button>':''}</div>`;
   let b='';
-  for(let n=0;n<=9;n++)b+=`<button data-pins="${n}" ${n>nb.max||(nb.max<10&&n===nb.max)?'disabled':''} aria-label="${n} pins">${n===0?'–':n}</button>`;
-  b+=`<button class="spare" data-pins="${nb.max}" ${nb.max<10?'':'disabled'} aria-label="Spare">/</button><button class="strike" data-pins="10" ${nb.max===10?'':'disabled'} aria-label="Strike">X</button>`;
+  for(let n=1;n<=9;n++)b+=`<button data-pins="${n}" ${n>nb.max||(nb.max<10&&n===nb.max)?'disabled':''} aria-label="${n} pins">${n}</button>`;
+  b+=`<button class="zero miss" data-pins="0" data-mk="m" aria-label="Miss, no pins, stayed on the lane">–<small>Miss</small></button><button class="zero gut" data-pins="0" data-mk="g" aria-label="Gutter ball">G<small>Gutter</small></button><button class="zero foul" data-pins="0" data-mk="f" aria-label="Foul">F<small>Foul</small></button>`;
+  b+=`<button class="spare wide" data-pins="${nb.max}" ${nb.max<10?'':'disabled'} aria-label="Spare">/</button><button class="strike wide" data-pins="10" ${nb.max===10?'':'disabled'} aria-label="Strike">X</button>`;
   return `<div class="pad">${b}</div><div class="row" style="margin-top:10px;justify-content:space-between"><button class="btn ghost" id="undo" ${r.length?'':'disabled'}>Undo</button>${auto?'<button class="linkbtn" id="nextB">Skip to next bowler</button>':''}</div>`;
 }
 const teamGame=g=>LU().reduce((s,b)=>{const x=gameScore(b.id,g);return s+(x?x.v:0)},0);
@@ -1123,7 +1136,7 @@ function card(b){
   else if(padFor===b.id){h+=`<div class="scorewrap">${scores}`;
     const r=getRolls(b.id,lg),L=getLeaves(b.id,lg),sc=scoreGame(r),nb=nextBall(r);
     const status=nb.done?`Game ${lg+1} final: ${sc.total}`:`Game ${lg+1}, frame ${nb.frame+1}, ball ${nb.ball+1}`+(nb.max<10?`. ${nb.max} standing`:'');
-    h+=`</div><div class="padwrap"><div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="muted">${status}</span><button class="linkbtn" id="closePad">Close frames</button></div>${sheet(sc,nb,false,r,L)}<div style="margin-top:10px">${entry(nb,r,L)}</div></div>`;
+    h+=`</div><div class="padwrap"><div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="muted">${status}</span><button class="linkbtn" id="closePad">Close frames</button></div>${sheet(sc,nb,false,r,L,getMarks(b.id,lg))}<div style="margin-top:10px">${entry(nb,r,L)}</div></div>`;
   } else {
     h+=`<div class="scorewrap">${scores}`;
     const hasTyped=S.live.totals&&typeof S.live.totals[b.id+':'+lg]==='number';
@@ -1303,7 +1316,7 @@ function vHistory(){
       gs+=`<div class="game"><b>G${i+1}</b><span><span class="tag h">Hero</span> ${x.heroes.map(id=>esc(nameOf(id))).join(' & ')} (${x.max})</span><span><span class="tag c">Chump</span> ${x.chumps.map(id=>esc(nameOf(id))).join(' & ')} (${x.min})</span></div>`;
     });
     let sheets='';
-    if(n.rolls){for(let g=0;g<S.games;g++){const ids=Object.keys(n.rolls).filter(id=>n.rolls[id][g]);if(!ids.length)continue;sheets+=`<div class="hsg"><b>Game ${g+1}</b>`+ids.map(id=>`<div class="hsrow"><span>${esc(nameOf(id))}</span>${sheet(scoreGame(n.rolls[id][g]),null,true,n.rolls[id][g],n.leaves&&n.leaves[id]&&n.leaves[id][g])}</div>`).join('')+'</div>'}}
+    if(n.rolls){for(let g=0;g<S.games;g++){const ids=Object.keys(n.rolls).filter(id=>n.rolls[id][g]);if(!ids.length)continue;sheets+=`<div class="hsg"><b>Game ${g+1}</b>`+ids.map(id=>`<div class="hsrow"><span>${esc(nameOf(id))}</span>${sheet(scoreGame(n.rolls[id][g]),null,true,n.rolls[id][g],n.leaves&&n.leaves[id]&&n.leaves[id][g],n.marks&&n.marks[id]&&n.marks[id][g])}</div>`).join('')+'</div>'}}
     const ev=n.jarEvents||[];let jar='';
     if(ev.length){
       const tin=ev.filter(e=>isIn(e)).reduce((a,e)=>a+e.amt,0),tout=ev.filter(e=>!isIn(e)).reduce((a,e)=>a+e.amt,0);
@@ -1370,12 +1383,12 @@ function wire(){
   all('[data-g]',b=>b.onclick=()=>{lg=+b.dataset.g;deckUp=new Set();render()});
   all('[data-frames]',b=>b.onclick=()=>{lg=+b.dataset.fg;padFor=sel=b.dataset.frames;deckUp=new Set();render()});
   if($('closePad'))$('closePad').onclick=()=>{padFor=null;deckUp=new Set();render()};
-  all('[data-pins]',b=>b.onclick=()=>roll(+b.dataset.pins));
+  all('[data-pins]',b=>b.onclick=()=>roll(+b.dataset.pins,undefined,b.dataset.mk));
   all('[data-deck]',b=>b.onclick=()=>{deck=b.dataset.deck==='1';deckUp=new Set();try{localStorage.setItem('ch-deck',deck?'1':'0')}catch(x){}render()});
   all('[data-pin]',b=>b.onclick=()=>{const p=+b.dataset.pin;if(deckUp.has(p))deckUp.delete(p);else deckUp.add(p);render()});
   const deckAv=()=>availMask(getRolls(sel,lg),getLeaves(sel,lg));
   all('[data-deckrec]',b=>b.onclick=()=>{const av=deckAv();if(av===null)return;let up=0;deckUp.forEach(p=>{if(av&bit(p))up|=bit(p)});roll(popcount(av)-popcount(up),up)});
-  all('[data-deckall]',b=>b.onclick=()=>{const av=deckAv();if(av===null)return;if(b.dataset.deckall==='all')roll(popcount(av),0);else roll(0,av)});
+  all('[data-deckall]',b=>b.onclick=()=>{const av=deckAv();if(av===null)return;if(b.dataset.deckall==='all')roll(popcount(av),0);else roll(0,av,b.dataset.mk)});
   if($('undo'))$('undo').onclick=()=>{const r=getRolls(sel,lg);if(r.length){setRolls(sel,lg,r.slice(0,-1));render()}};
   if($('nextB'))$('nextB').onclick=()=>{advance();render()};
   if($('scoreSw'))$('scoreSw').onchange=e=>{showScores=e.target.checked;if(!showScores)padFor=null;try{localStorage.setItem('ch-scores',showScores?'1':'0')}catch(x){}render()};

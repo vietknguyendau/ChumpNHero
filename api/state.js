@@ -58,7 +58,9 @@ function normalize(raw) {
   return s;
 }
 // Live games are stored as {r: rolls, s: {rollIndex: "s" | "b"}} (s = split, b = 7-10 / Greek Church).
-const normLive = (x) => (Array.isArray(x) ? { r: x, s: {}, L: [] } : { r: x.r || [], s: x.s || {}, L: x.L || [] });
+const normLive = (x) => (Array.isArray(x) ? { r: x, s: {}, L: [], M: [] } : { r: x.r || [], s: x.s || {}, L: x.L || [], M: x.M || [] });
+// How each 0 happened: gutter, miss or foul. Anything else is dropped.
+const cleanMarks = (rolls, M) => rolls.map((v, i) => (v === 0 && Array.isArray(M) && ["g", "m", "f"].includes(M[i]) ? M[i] : null));
 // Pin leaves must agree with the rolls: right number of pins, and only pins that were still up.
 function cleanLeaves(rolls, L) {
   if (!Array.isArray(L)) return [];
@@ -127,7 +129,8 @@ function scoreGame(r){
 // A leave is a 10-bit mask of pins still standing: bit (p-1) set = pin p standing.
 const ALL_PINS=1023;
 const PIN_ROWS=[[7,8,9,10],[4,5,6],[2,3],[1]];
-const ADJ={1:[2,3],2:[1,3,4,5],3:[1,2,5,6],4:[2,5,7,8],5:[2,3,4,6,8,9],6:[3,5,9,10],7:[4,8],8:[4,5,7,9],9:[5,6,8,10],10:[6,9]};
+// Pins that count as connected: touching neighbors, plus "double wood" (one pin directly behind another: 1-5, 2-8, 3-9).
+const ADJ={1:[2,3,5],2:[1,3,4,5,8],3:[1,2,5,6,9],4:[2,5,7,8],5:[1,2,3,4,6,8,9],6:[3,5,9,10],7:[4,8],8:[2,4,5,7,9],9:[3,5,6,8,10],10:[6,9]};
 const bit=p=>1<<(p-1);
 const pinsOf=m=>{const o=[];for(let p=1;p<=10;p++)if(m&bit(p))o.push(p);return o};
 const maskOf=ps=>ps.reduce((m,p)=>m|bit(p),0);
@@ -150,17 +153,19 @@ function clean10(r){const t=tenthRolls(r);if(t.length!==3)return false;
   if(t[0]===10)return t[1]===10?t[2]===10:t[1]+t[2]===10;
   return t[0]+t[1]===10&&t[2]===10}
 // Jar events the app can detect from the rolls (and pin leaves, when the pin deck was used).
-function autoJar(r,L){
-  L=L||[];const ev=[];let streak=0;
+// M marks how a 0 happened: 'g' gutter, 'm' miss (stayed on the lane), 'f' foul. Only a real gutter is a gutter fine.
+function autoJar(r,L,M){
+  L=L||[];M=M||[];const ev=[];let streak=0;
   for(let i=0;i<r.length;i++){
     const st=nextBall(r.slice(0,i)).max,first=st===10;
+    if(M[i]==='f')ev.push({k:'foul',i});
     if(first){
-      if(r[i]===0)ev.push({k:'gutter1',i});
+      if(r[i]===0&&M[i]==='g')ev.push({k:'gutter1',i});
       if(r[i]===10){streak++;if(streak===4)ev.push({k:'fourBagger',i})}else streak=0;
       const m=L[i];if(typeof m==='number'&&r[i]<10&&isSplit(m))ev.push({k:'splitCaused',i});
     }else{
       if(st===1&&r[i]===0)ev.push({k:'openSingle',i});
-      else if(r[i]===0)ev.push({k:'gutter2',i});
+      if(r[i]===0&&M[i]==='g')ev.push({k:'gutter2',i});
       const m=L[i-1];if(typeof m==='number'&&isSplit(m)&&r[i]===st)ev.push({k:bigKind(m)?'bigSplitConv':'splitConv',i});
     }
   }
@@ -385,7 +390,8 @@ export default async function handler(req, res) {
       }
       const key = id + ":" + game;
       const L = cleanLeaves(rolls, body.leaves);
-      if (rolls.length) await redis.hset(K.live, { [key]: JSON.stringify({ r: rolls, s: splits, L }) });
+      const M = cleanMarks(rolls, body.marks);
+      if (rolls.length) await redis.hset(K.live, { [key]: JSON.stringify({ r: rolls, s: splits, L, M }) });
       else await redis.hdel(K.live, key);
     } else if (action === "setTotal") {
       if (!(await redis.get(K.liveMeta))) return bad(res, "No night in progress. Start one first.");
@@ -461,7 +467,7 @@ export default async function handler(req, res) {
       const shotsRaw = (await redis.hgetall(K.liveShots)) || {};
       const liveTot = (await redis.hgetall(K.liveTot)) || {};
       const jarEvents = values(await redis.hgetall(K.liveJar));
-      const scores = {}, rolls = {}, splits = {}, leaves = {};
+      const scores = {}, rolls = {}, splits = {}, leaves = {}, marks = {};
       for (const [k, v] of Object.entries(live)) {
         const [id, g] = k.split(":");
         const gi = +g;
@@ -469,9 +475,9 @@ export default async function handler(req, res) {
         const L = normLive(parse(v));
         if (!scores[id]) {
           scores[id] = Array(games).fill(null); rolls[id] = Array(games).fill(null);
-          splits[id] = Array(games).fill(null); leaves[id] = Array(games).fill(null);
+          splits[id] = Array(games).fill(null); leaves[id] = Array(games).fill(null); marks[id] = Array(games).fill(null);
         }
-        leaves[id][gi] = L.L;
+        leaves[id][gi] = L.L; marks[id][gi] = L.M;
         const s = scoreGame(L.r);
         scores[id][gi] = s.complete ? s.total : null;
         rolls[id][gi] = L.r;
@@ -481,13 +487,13 @@ export default async function handler(req, res) {
       for (const [k, v] of Object.entries(liveTot)) {
         const [id, g] = k.split(":"), gi = +g;
         if (gi >= games) continue;
-        if (!scores[id]) { scores[id] = Array(games).fill(null); rolls[id] = Array(games).fill(null); splits[id] = Array(games).fill(null); leaves[id] = Array(games).fill(null); }
+        if (!scores[id]) { scores[id] = Array(games).fill(null); rolls[id] = Array(games).fill(null); splits[id] = Array(games).fill(null); leaves[id] = Array(games).fill(null); marks[id] = Array(games).fill(null); }
         if (!rolls[id][gi] && scores[id][gi] === null) scores[id][gi] = +parse(v);
       }
       const anyDone = Object.values(scores).some((a) => a.some((v) => v !== null));
       // Only tonight's lineup counts (anyone removed mid-night is left out).
       const inLineup = (id) => !Array.isArray(meta.lineup) || meta.lineup.includes(id);
-      for (const o of [scores, rolls, splits, leaves]) for (const id of Object.keys(o)) if (!inLineup(id)) delete o[id];
+      for (const o of [scores, rolls, splits, leaves, marks]) for (const id of Object.keys(o)) if (!inLineup(id)) delete o[id];
       for (let i = jarEvents.length - 1; i >= 0; i--) if (!inLineup(jarEvents[i].b)) jarEvents.splice(i, 1);
       // Fines and bounties detected from the frames.
       const settingsNow = await getSettings();
@@ -496,7 +502,7 @@ export default async function handler(req, res) {
       for (const id of Object.keys(rolls)) {
         rolls[id].forEach((r, g) => {
           if (!r) return;
-          autoJar(r, leaves[id][g]).forEach((a) => {
+          autoJar(r, leaves[id][g], marks[id] && marks[id][g]).forEach((a) => {
             let amt = jar[a.k] || 0;
             if (a.k === "bigSplitConv" && settingsNow.bigSplitPot) {
               if (potBase === null) {
@@ -516,7 +522,7 @@ export default async function handler(req, res) {
         return bad(res, "Nothing to save yet. Add a score, a jar item or a note first.");
       const shots = {};
       for (const [k, v] of Object.entries(shotsRaw)) if (inLineup(k.split(":")[0])) shots[k] = parse(v);
-      const n = { id: uid(), date: meta.date, lineup: meta.lineup, shots, scores, rolls, splits, leaves, jarEvents, notes, created: Date.now() };
+      const n = { id: uid(), date: meta.date, lineup: meta.lineup, shots, scores, rolls, splits, leaves, marks, jarEvents, notes, created: Date.now() };
       await redis.hset(K.nights, { [n.id]: JSON.stringify(n) });
       for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes, K.liveShots, K.liveMeta]) await redis.del(k);
     } else if (action === "cancelNight") {
