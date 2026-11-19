@@ -374,6 +374,8 @@ const FINES=[
 const BOUNTIES=[
   {k:'splitConv',label:'Split conversion',short:'Split made'},
   {k:'bigSplitConv',label:'Big split conversion (7-10, Greek Church, 4-6-7-10)',short:'Big split made'},
+  {k:'double',label:'Double (2 strikes in a row)',short:'Double'},
+  {k:'triple',label:'Triple / Turkey (3 strikes in a row)',short:'Triple'},
   {k:'fourBagger',label:'Four-bagger (Ham Turkey)',short:'4-bagger'},
   {k:'clutch10',label:'Clutch 10th: X X X, X then a spare, or a spare then X',short:'Clutch 10th'},
   {k:'game200',get label(){return `Bowl a ${bigGame()}+ game`},get short(){return `${bigGame()} game`}}];
@@ -488,7 +490,7 @@ function autoJar(r,L,M){
     if(M[i]==='f')ev.push({k:'foul',i});
     if(first){
       if(r[i]===0&&M[i]==='g')ev.push({k:'gutter1',i});
-      if(r[i]===10){streak++;if(streak===4)ev.push({k:'fourBagger',i})}else streak=0;
+      if(r[i]===10){streak++;if(streak===2)ev.push({k:'double',i});if(streak===3)ev.push({k:'triple',i});if(streak===4)ev.push({k:'fourBagger',i})}else streak=0;
       const m=L[i];if(typeof m==='number'&&r[i]<10&&isSplit(m))ev.push({k:'splitCaused',i});
     }else{
       if(st===1&&r[i]===0)ev.push({k:'openSingle',i});
@@ -607,7 +609,7 @@ function liveJar(){
 function autoSet(b){
   const r=getRolls(b,lg);
   if(!r.length){const s=new Set();if(gameScore(b,lg))s.add('game200');return s}
-  const s=new Set(['gutter1','gutter2','openSingle','fourBagger','clutch10','game200','foul']);
+  const s=new Set(['gutter1','gutter2','openSingle','double','triple','fourBagger','clutch10','game200','foul']);
   if(getLeaves(b,lg).some(x=>typeof x==='number'))['splitCaused','splitConv','bigSplitConv'].forEach(k=>s.add(k));
   return s;
 }
