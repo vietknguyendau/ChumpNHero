@@ -14,11 +14,11 @@ const DEFAULTS = { team: "Our Team", games: 3 };
 // Chump & Hero Jar amounts in dollars (editable in the app).
 const DEFAULT_JAR = {
   gutter1: 1, gutter2: 0.5, openSingle: 0.5, foul: 1, splitCaused: 0.5,
-  splitConv: 2, bigSplitConv: 5, fourBagger: 1, clutch10: 1, game200: 1,
+  splitConv: 2, bigSplitConv: 5, double: 0.25, triple: 0.5, fourBagger: 1, clutch10: 1, game200: 1,
   chump: 0, buyin: 0,
 };
 const JAR_TAPS = ["gutter1", "gutter2", "openSingle", "foul", "splitCaused",
-  "splitConv", "bigSplitConv", "fourBagger", "clutch10", "game200"]; // no buy-ins: the jar is only fines and bounties
+  "splitConv", "bigSplitConv", "double", "triple", "fourBagger", "clutch10", "game200"]; // no buy-ins: the jar is only fines and bounties
 // Team-made buttons, e.g. {k:"c_ab12cd", label:"5-pin miss", fine:true, amt:0.5}
 function cleanCustom(list) {
   if (!Array.isArray(list)) return [];
@@ -161,7 +161,7 @@ function autoJar(r,L,M){
     if(M[i]==='f')ev.push({k:'foul',i});
     if(first){
       if(r[i]===0&&M[i]==='g')ev.push({k:'gutter1',i});
-      if(r[i]===10){streak++;if(streak===4)ev.push({k:'fourBagger',i})}else streak=0;
+      if(r[i]===10){streak++;if(streak===2)ev.push({k:'double',i});if(streak===3)ev.push({k:'triple',i});if(streak===4)ev.push({k:'fourBagger',i})}else streak=0;
       const m=L[i];if(typeof m==='number'&&r[i]<10&&isSplit(m))ev.push({k:'splitCaused',i});
     }else{
       if(st===1&&r[i]===0)ev.push({k:'openSingle',i});
@@ -497,7 +497,7 @@ export default async function handler(req, res) {
       for (let i = jarEvents.length - 1; i >= 0; i--) if (!inLineup(jarEvents[i].b)) jarEvents.splice(i, 1);
       // Fines and bounties detected from the frames.
       const settingsNow = await getSettings();
-      const isIn = (e) => (e.fine !== undefined ? e.fine : !["splitConv", "bigSplitConv", "fourBagger", "clutch10", "game200"].includes(e.k));
+      const isIn = (e) => (e.fine !== undefined ? e.fine : !["splitConv", "bigSplitConv", "double", "triple", "fourBagger", "clutch10", "game200"].includes(e.k));
       let potBase = null;
       for (const id of Object.keys(rolls)) {
         rolls[id].forEach((r, g) => {
