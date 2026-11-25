@@ -539,6 +539,18 @@ function frameOfRolls(r){const out=[];let i=0;for(let f=0;f<9&&i<r.length;f++){i
 const RANKS='23456789TJQKA',SUITS='SHDC';
 // Marks = racks cleared: strikes and spares, fill balls in the 10th included. Each mark earns a card.
 function marksOf(r){let n=0;for(let i=0;i<r.length;i++)if(r[i]===nextBall(r.slice(0,i)).max)n++;return n}
+// Cards earned, one entry per card (the frame it came in): first strike 1, every strike after it in a row 2 (never more),
+// spare 1, converted split 2 (split known from the pin deck's leave).
+function cardFrames(r,L){
+  L=L||[];const fr=frameOfRolls(r),out=[];let streak=0;
+  for(let i=0;i<r.length;i++){
+    const st=nextBall(r.slice(0,i)).max,first=st===10;let n=0;
+    if(first){if(r[i]===10){streak++;n=streak>=2?2:1}else streak=0}
+    else if(r[i]===st)n=typeof L[i-1]==='number'&&isSplit(L[i-1])?2:1;
+    for(let k=0;k<n;k++)out.push(fr[i]);
+  }
+  return out;
+}
 // Score up to 5 cards. Straights and flushes need all 5; fewer cards can still make pairs, trips and quads.
 function score5(cs){
   const rv=cs.map(c=>RANKS.indexOf(c[0])+2).sort((a,b)=>b-a),cnt={};rv.forEach(v=>cnt[v]=(cnt[v]||0)+1);
@@ -696,14 +708,14 @@ async function addJar(b,k){
   const x=await post({action:'addJar',bowlerId:b,k,game:lg,amt:a});
   pendingJar=pendingJar.filter(e=>e!==tmp);
   if(x.ok)S=x.d;else toast(x.d.error||'Could not save that.');
-  if(!typing())render();
+  if(!typing())render();pkRefresh();
 }
 async function removeJar(e){
   if(e.pending)return;
   removedJar[e.id]=1;render();
   const x=await post({action:'removeJar',id:e.id});
   if(x.ok)S=x.d;else toast(x.d.error||'Could not undo that.');
-  delete removedJar[e.id];if(!typing())render();
+  delete removedJar[e.id];if(!typing())render();pkRefresh();
 }
 
 
@@ -1135,7 +1147,7 @@ function pokerStrip(b){
   }
   const manual=!res&&!getRolls(b.id,lg).length?`<span class="pkman"><button class="cb ok" data-pkmark="1" data-b="${b.id}" aria-label="Add a card for a strike or spare">+ Card</button><button class="cb miss" data-pkmark="-1" data-b="${b.id}" ${n?'':'disabled'} aria-label="Remove last card">−</button></span>`:'';
   return `<div class="poker"><div class="pkhead"><span><b>Poker</b> <small class="muted">G${lg+1}, ${n} card${n===1?'':'s'}</small>${owes&&!res?` <small class="owetag">owes ${owes}</small>`:''}</span><span class="pkact">${actions}</span></div>${body}
-  ${manual?`<div class="pkmanrow"><small class="muted">Not scoring frames: tap + Card for each strike or spare.</small>${manual}</div>`:''}
+  ${manual?`<div class="pkmanrow"><small class="muted">Not scoring frames: + Card for each strike or spare, twice for each strike after the first in a row. Split made adds its extra card.</small>${manual}</div>`:''}
   ${mode&&!res?pinForm(b.id,mode):''}</div>`;
 }
 function pokerPanel(){
@@ -1149,7 +1161,7 @@ function pokerPanel(){
   }
   const pl=pkPlayers(lg),any=Object.values(counts).some(n=>n);
   return `<div class="pkpanel"><div class="pkhead"><b>Poker, game ${lg+1}</b><span>${ante&&pl.length>1?`Pot ${money(ante*pl.length)}`:''}</span></div>
-  <p class="muted" style="margin:4px 0 8px;font-size:.88rem">${pl.map(id=>`${esc(nameOf(id))} ${(counts[id]||0)}${(g.owe||{})[id]?` (owes ${g.owe[id]})`:''}`).join(', ')} cards. Strikes and spares each draw a card; hold 5 max. Best hand wins${ante?`; everyone antes ${money(ante)}`:''}.</p>
+  <p class="muted" style="margin:4px 0 8px;font-size:.88rem">${pl.map(id=>`${esc(nameOf(id))} ${(counts[id]||0)}${(g.owe||{})[id]?` (owes ${g.owe[id]})`:''}`).join(', ')} cards. Strike 1 card, each strike after it in a row 2, spare 1, split made 2 (never more than 2 at once). Hold 5 max. Best hand wins${ante?`; everyone antes ${money(ante)}`:''}.</p>
   <button class="btn ghost" style="padding:8px 14px" data-pkshow="${lg}" ${any?'':'disabled'}>Showdown game ${lg+1}</button><span class="muted" style="font-size:.8rem;margin-left:8px">Any hand still face down shows when you finish the night.</span></div>`;
 }
 
@@ -1385,7 +1397,7 @@ function vJar(){
   };
   h+=`<div class="rules"><div class="rhead"><b>Fines</b><span class="muted">Tossed in as soon as the ball returns</span></div>${FINES.map(row).join('')}${row(RULE.chump)}`;
   h+=`<div class="rhead"><b>Bounties</b><span class="muted">Pulled from the jar by the shooter</span></div>${BOUNTIES.map(row).join('')}`;
-  h+=`<div class="rhead"><b>Bowling poker</b><span class="muted">Strikes and spares draw cards; best hand each game takes the antes</span></div>`+(editJar?`<label class="rulerow edit"><span>Play bowling poker</span><input type="checkbox" id="pokerOnIn" ${S.pokerOn?'checked':''}></label>${row(RULE.pokerAnte)}`:S.pokerOn?row(RULE.pokerAnte):'<div class="rulerow"><span>Bowling poker</span><b>Off</b></div>');
+  h+=`<div class="rhead"><b>Bowling poker</b><span class="muted">Strike 1 card, doubles and up 2, spare 1, split made 2; best hand each game takes the antes</span></div>`+(editJar?`<label class="rulerow edit"><span>Play bowling poker</span><input type="checkbox" id="pokerOnIn" ${S.pokerOn?'checked':''}></label>${row(RULE.pokerAnte)}`:S.pokerOn?row(RULE.pokerAnte):'<div class="rulerow"><span>Bowling poker</span><b>Off</b></div>');
   const cs=customs();
   h+=`<div class="rhead"><b>Custom buttons</b><span class="muted">Your team’s own fines and bounties</span></div>`;
   h+=cs.length?cs.map(x=>editJar?`<label class="rulerow edit"><span><span class="kind ${x.fine?'f':'w'}">${x.fine?'Fine':'Bounty'}</span> ${esc(x.label)}</span><span class="amtin">$<input type="number" min="0" step="0.25" inputmode="decimal" data-cjar="${x.k}" value="${x.amt.toFixed(2)}"></span></label>`

@@ -183,6 +183,18 @@ function frameOfRolls(r){const out=[];let i=0;for(let f=0;f<9&&i<r.length;f++){i
 const RANKS='23456789TJQKA',SUITS='SHDC';
 // Marks = racks cleared: strikes and spares, fill balls in the 10th included. Each mark earns a card.
 function marksOf(r){let n=0;for(let i=0;i<r.length;i++)if(r[i]===nextBall(r.slice(0,i)).max)n++;return n}
+// Cards earned, one entry per card (the frame it came in): first strike 1, every strike after it in a row 2 (never more),
+// spare 1, converted split 2 (split known from the pin deck's leave).
+function cardFrames(r,L){
+  L=L||[];const fr=frameOfRolls(r),out=[];let streak=0;
+  for(let i=0;i<r.length;i++){
+    const st=nextBall(r.slice(0,i)).max,first=st===10;let n=0;
+    if(first){if(r[i]===10){streak++;n=streak>=2?2:1}else streak=0}
+    else if(r[i]===st)n=typeof L[i-1]==='number'&&isSplit(L[i-1])?2:1;
+    for(let k=0;k<n;k++)out.push(fr[i]);
+  }
+  return out;
+}
 // Score up to 5 cards. Straights and flushes need all 5; fewer cards can still make pairs, trips and quads.
 function score5(cs){
   const rv=cs.map(c=>RANKS.indexOf(c[0])+2).sort((a,b)=>b-a),cnt={};rv.forEach(v=>cnt[v]=(cnt[v]||0)+1);
@@ -337,6 +349,22 @@ async function trimOthers(g, bowlerId) {
     if (heldOf(h).length > 5) { autoTrim(h, Infinity); upd[f] = JSON.stringify(h); }
   }
   if (Object.keys(upd).length) await redis.hset(K.poker, upd);
+}
+// Work out how many cards a bowler has earned in game g, then deal or take back to match.
+// Without pin-deck leaves, a tapped "Split made" / "Big split made" adds the split's extra card.
+async function pokerResync(id, g) {
+  const key = id + ":" + g, rec = parse(await redis.hget(K.live, key)), L = rec ? normLive(rec) : null;
+  const taps = values(await redis.hgetall(K.liveJar)).filter((e) => e.b === id && +e.g === g && (e.k === "splitConv" || e.k === "bigSplitConv")).length;
+  let frames;
+  if (L && L.r.length) {
+    frames = cardFrames(L.r, L.L);
+    if (!(L.L || []).some((x) => Number.isInteger(x))) for (let i = 0; i < taps; i++) frames.push(frames.length ? frames[frames.length - 1] : 0);
+  } else {
+    const n = +(parse(await redis.hget(K.pokerManual, key)) || 0);
+    frames = Array.from({ length: n }, (_, i) => i);
+    for (let i = 0; i < taps; i++) frames.push(n ? n - 1 : 0);
+  }
+  await syncHand(id, g, frames.length, frames);
 }
 // Deal or take back cards so a bowler has been dealt `target` cards for game g.
 // Taken-back cards are kept and dealt again first, so undoing a strike can't re-roll a card.
@@ -567,7 +595,7 @@ export default async function handler(req, res) {
       if (rolls.length) await redis.hset(K.live, { [key]: JSON.stringify({ r: rolls, s: splits, L, M }) });
       else await redis.hdel(K.live, key);
       if ((await getSettings()).pokerOn && rolls.length > prevLen) await trimOthers(game, id);
-      if ((await getSettings()).pokerOn) await syncHand(id, game, rolls.length ? marksOf(rolls) : +(parse(await redis.hget(K.pokerManual, key)) || 0), rolls.length ? markFrames(rolls) : null);
+      if ((await getSettings()).pokerOn) await pokerResync(id, game);
     } else if (action === "setTotal") {
       if (!(await redis.get(K.liveMeta))) return bad(res, "No night in progress. Start one first.");
       const id = String(body.bowlerId || "").slice(0, 20), game = Math.round(+body.game);
@@ -588,6 +616,7 @@ export default async function handler(req, res) {
       const e = { id: uid(), b, k, g: Math.max(0, Math.min(4, Math.round(+body.game || 0))), amt, at: Date.now() };
       if (custom) { e.label = custom.label; e.fine = custom.fine; } // kept even if the button is deleted later
       await redis.hset(K.liveJar, { [e.id]: JSON.stringify(e) });
+      if ((k === "splitConv" || k === "bigSplitConv") && (await getSettings()).pokerOn) await pokerResync(b, e.g);
     } else if (action === "setLineup") {
       const meta = parse(await redis.get(K.liveMeta));
       if (!meta) return bad(res, "No night in progress");
@@ -631,7 +660,9 @@ export default async function handler(req, res) {
         await redis.hset(K.liveNotes, { [id.slice(0, 20) + ":" + Math.round(+g)]: JSON.stringify(n) });
       }
     } else if (action === "removeJar") {
+      const gone = parse(await redis.hget(K.liveJar, String(body.id || "")));
       await redis.hdel(K.liveJar, String(body.id || ""));
+      if (gone && (gone.k === "splitConv" || gone.k === "bigSplitConv") && (await getSettings()).pokerOn) await pokerResync(gone.b, +gone.g);
     } else if (action === "pokerMark") {
       // Card by tap, for games not scored frame by frame.
       if (!(await redis.get(K.liveMeta))) return bad(res, "No night in progress. Start one first.");
@@ -642,7 +673,7 @@ export default async function handler(req, res) {
       const n = Math.max(0, Math.min(12, (+(parse(await redis.hget(K.pokerManual, key)) || 0)) + (+body.delta > 0 ? 1 : -1)));
       await redis.hset(K.pokerManual, { [key]: JSON.stringify(n) });
       if (+body.delta > 0) await trimOthers(g, id);
-      await syncHand(id, g, n);
+      await pokerResync(id, g);
     } else if (action === "pokerReveal") {
       const meta = parse(await redis.get(K.liveMeta));
       if (!meta) return bad(res, "No night in progress");
