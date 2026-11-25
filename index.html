@@ -60,7 +60,7 @@ button,input,select{font:inherit;color:inherit}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 label.field{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:.9rem;color:var(--muted)}
-input[type=text],input[type=date],input[type=number]{background:var(--surface);border:2px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--ink);width:100%}
+input[type=text],input[type=date],input[type=number],input[type=password]{background:var(--surface);border:2px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--ink);width:100%}
 input:focus{border-color:var(--teal);outline:none}
 .muted{color:var(--muted)}
 .empty{border:2px dashed var(--line);border-radius:16px;padding:28px 20px;text-align:center;color:var(--muted)}
@@ -236,6 +236,34 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .amtin input{width:86px;text-align:right}
 .jarline{margin:6px 0 0;font-size:.9rem}
 .chips.wrap{flex-wrap:wrap;overflow:visible}
+.poker{margin-top:12px;padding:10px;border-radius:12px;background:var(--bg);border:2px solid var(--line)}
+.pkhead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.pkact{display:flex;gap:12px}
+.pcs{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.pc{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:34px;height:46px;border-radius:6px;background:#fff;color:#141A33;font-weight:800;font-size:.95rem;line-height:1;border:1px solid #c9cde0;box-shadow:0 1px 0 rgba(0,0,0,.15)}
+.pc i{font-style:normal;font-size:1rem}
+.pc.red{color:#C8102E}
+.pc.dim{opacity:.4}
+.pc.back{background:repeating-linear-gradient(45deg,var(--btn) 0 4px,#1d3fb8 4px 8px);border-color:var(--btn)}
+.pcs.sm .pc{width:26px;height:36px;font-size:.78rem}.pcs.sm .pc i{font-size:.8rem}
+.pkname{display:inline-block;margin-top:6px;font-weight:800;font-size:.9rem}
+.pkname .win,.win{color:var(--green);margin-left:4px}
+.pkmanrow{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.pkman{display:flex;gap:6px}
+.pkform{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.pkform input{letter-spacing:.3em}
+.pkpanel{border:2px solid var(--gold);border-radius:16px;padding:12px 14px;margin:18px 0 6px;background:var(--surface)}
+.pkrow{display:grid;grid-template-columns:70px auto 1fr;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.tossrow{grid-column:2/4;display:flex;gap:6px;align-items:center}
+.tossed{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.owe{margin:0 0 8px;font-size:.9rem}
+.owetag{background:var(--goldSoft);color:var(--ink);border-radius:6px;padding:1px 6px;font-weight:800}
+.pcbtn{background:none;border:0;padding:0;cursor:pointer;border-radius:8px;position:relative;touch-action:manipulation}
+.pcbtn.on .pc{transform:translateY(-6px);opacity:.45;box-shadow:0 0 0 3px var(--red)}
+.pcbtn.on::after{content:'✕';position:absolute;top:-12px;right:-4px;background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;font-size:.65rem;line-height:16px;font-weight:800}
+.pkrow .name{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pkrow .pkname{margin:0;font-size:.82rem}
+.pkrow.won .name,.pkrow.won .pkname{color:var(--green)}
 .warnbox{margin:0 0 10px;border-left:4px solid var(--red);background:var(--redSoft);border-radius:0 10px 10px 0;padding:10px 12px;font-size:.9rem}
 .wk tr.noscore td{color:var(--muted);font-style:italic;text-align:left}
 .wk tr.noscore td.name{font-style:normal;color:var(--ink)}
@@ -364,7 +392,7 @@ details *,details *::before,details *::after{box-sizing:border-box}
 <div class="wrap" id="root"></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <script>(()=>{
-let S={team:'Our Team',games:3,jar:{},bigSplitPot:false,customJar:[],bowlers:[],nights:[],live:null,pinRequired:false};
+let S={team:'Our Team',games:3,jar:{},bigSplitPot:false,customJar:[],pokerOn:true,pokerPins:[],bowlers:[],nights:[],live:null,pinRequired:false};
 const FINES=[
   {k:'gutter1',label:'Gutter ball, 1st ball',short:'Gutter 1st'},
   {k:'gutter2',label:'Gutter ball on a spare attempt',short:'Gutter 2nd'},
@@ -377,10 +405,12 @@ const BOUNTIES=[
   {k:'double',label:'Double (2 strikes in a row)',short:'Double'},
   {k:'triple',label:'Triple / Turkey (3 strikes in a row)',short:'Triple'},
   {k:'fourBagger',label:'Four-bagger (Ham Turkey)',short:'4-bagger'},
+  {k:'moreStrikes',label:'Every strike after a 4-bagger (5th, 6th, …)',short:'Strike 5+'},
   {k:'clutch10',label:'Clutch 10th: X X X, X then a spare, or a spare then X',short:'Clutch 10th'},
   {k:'game200',get label(){return `Bowl a ${bigGame()}+ game`},get short(){return `${bigGame()} game`}}];
 FINES.forEach(r=>r.fine=true);BOUNTIES.forEach(r=>r.fine=false);
-const EXTRA=[{k:'chump',label:'Chump of the game (added when the night is saved)',short:'Chumps',fine:true},{k:'buyin',label:'Buy-in per bowler before Game 1',short:'Buy-ins',fine:true,buyin:true}];
+const EXTRA=[{k:'chump',label:'Chump of the game (added when the night is saved)',short:'Chumps',fine:true},{k:'buyin',label:'Buy-in per bowler before Game 1',short:'Buy-ins',fine:true,buyin:true},
+  {k:'pokerAnte',label:'Poker ante, per player each game',short:'Poker ante',fine:true},{k:'pokerWin',label:'Poker pot',short:'Poker pot',fine:false}];
 const RULES=[...FINES,...BOUNTIES,...EXTRA];
 const RULE=Object.fromEntries(RULES.map(r=>[r.k,r]));
 const bigGame=()=>+S.bigGame||200;
@@ -490,7 +520,7 @@ function autoJar(r,L,M){
     if(M[i]==='f')ev.push({k:'foul',i});
     if(first){
       if(r[i]===0&&M[i]==='g')ev.push({k:'gutter1',i});
-      if(r[i]===10){streak++;if(streak===2)ev.push({k:'double',i});if(streak===3)ev.push({k:'triple',i});if(streak===4)ev.push({k:'fourBagger',i})}else streak=0;
+      if(r[i]===10){streak++;if(streak===2)ev.push({k:'double',i});if(streak===3)ev.push({k:'triple',i});if(streak===4)ev.push({k:'fourBagger',i});if(streak>=5)ev.push({k:'moreStrikes',i})}else streak=0;
       const m=L[i];if(typeof m==='number'&&r[i]<10&&isSplit(m))ev.push({k:'splitCaused',i});
     }else{
       if(st===1&&r[i]===0)ev.push({k:'openSingle',i});
@@ -503,6 +533,44 @@ function autoJar(r,L,M){
 }
 // Which frame each roll belongs to.
 function frameOfRolls(r){const out=[];let i=0;for(let f=0;f<9&&i<r.length;f++){if(r[i]===10){out[i]=f;i++}else{out[i]=f;if(i+1<r.length)out[i+1]=f;i+=2}}for(;i<r.length;i++)out[i]=9;return out}
+
+// ---- Bowling poker ----
+// Cards are strings like "AS" (ace of spades) or "TH" (ten of hearts).
+const RANKS='23456789TJQKA',SUITS='SHDC';
+// Marks = racks cleared: strikes and spares, fill balls in the 10th included. Each mark earns a card.
+function marksOf(r){let n=0;for(let i=0;i<r.length;i++)if(r[i]===nextBall(r.slice(0,i)).max)n++;return n}
+// Score up to 5 cards. Straights and flushes need all 5; fewer cards can still make pairs, trips and quads.
+function score5(cs){
+  const rv=cs.map(c=>RANKS.indexOf(c[0])+2).sort((a,b)=>b-a),cnt={};rv.forEach(v=>cnt[v]=(cnt[v]||0)+1);
+  const gr=Object.entries(cnt).map(([v,n])=>[n,+v]).sort((a,b)=>b[0]-a[0]||b[1]-a[1]),kick=gr.map(g=>g[1]);
+  const five=cs.length===5,flush=five&&cs.every(c=>c[1]===cs[0][1]);
+  let st=0;if(five&&gr.length===5){if(rv[0]-rv[4]===4)st=rv[0];else if(rv[0]===14&&rv[1]===5)st=5}
+  if(st&&flush)return[8,st];
+  if(gr[0][0]===4)return[7,...kick];
+  if(gr[0][0]===3&&gr[1]&&gr[1][0]===2)return[6,...kick];
+  if(flush)return[5,...rv];
+  if(st)return[4,st];
+  if(gr[0][0]===3)return[3,...kick];
+  if(gr[0][0]===2&&gr[1]&&gr[1][0]===2)return[2,...kick];
+  if(gr[0][0]===2)return[1,...kick];
+  return[0,...kick];
+}
+function cmpHand(a,b){for(let i=0;i<Math.max(a.length,b.length);i++){const x=a[i]===undefined?-1:a[i],y=b[i]===undefined?-1:b[i];if(x!==y)return x-y}return 0}
+const RN1={14:'Ace',13:'King',12:'Queen',11:'Jack',10:'Ten',9:'Nine',8:'Eight',7:'Seven',6:'Six',5:'Five',4:'Four',3:'Three',2:'Two'};
+const RNS=v=>v===6?'Sixes':RN1[v]+'s';
+function handName(s){switch(s[0]){
+  case 8:return s[1]===14?'Royal flush':`Straight flush, ${RN1[s[1]]} high`;
+  case 7:return `Four ${RNS(s[1])}`;case 6:return `Full house, ${RNS(s[1])} over ${RNS(s[2])}`;
+  case 5:return `Flush, ${RN1[s[1]]} high`;case 4:return `Straight, ${RN1[s[1]]} high`;
+  case 3:return `Three ${RNS(s[1])}`;case 2:return `Two pair, ${RNS(s[1])} and ${RNS(s[2])}`;
+  case 1:return `Pair of ${RNS(s[1])}`;case 0:return `${RN1[s[1]]} high`;default:return 'No cards'}}
+// Best hand from any number of cards (best 5, or all of them when fewer than 5).
+function bestHand(cards){
+  if(!cards||!cards.length)return {score:[-1],cards:[],name:'No cards'};
+  const k=Math.min(5,cards.length);let best=null,bc=null;
+  const pick=(s,acc)=>{if(acc.length===k){const sc=score5(acc);if(!best||cmpHand(sc,best)>0){best=sc;bc=acc.slice()}return}for(let i=s;i<cards.length;i++){acc.push(cards[i]);pick(i+1,acc);acc.pop()}};
+  pick(0,[]);return {score:best,cards:bc,name:handName(best)};
+}
 
 
 // ---- server ----
@@ -531,7 +599,7 @@ async function load(){
     const r=await fetch('/api/state',{cache:'no-store'});if(!r.ok)throw 0;
     const d=await r.json();
     if(root.querySelector('.grid'))draft=readDraft();
-    S=d;loaded=true;loadError=false;render();
+    S=d;loaded=true;loadError=false;render();pkRefresh();
   }catch(e){loadError=true;if(!loaded)render()}
 }
 
@@ -550,7 +618,7 @@ async function flush(){
     if(x.ok){S=x.d;if(ov[k]&&ov[k].ver===v)delete ov[k]}
     else{toast(x.d.error||'Could not save that roll.');delete ov[k];break}
   }
-  flushing=false;if(!typing())render();
+  flushing=false;if(!typing())render();pkRefresh();
 }
 function advance(){
   deckUp=new Set();const ids=LU().map(b=>b.id);const i=ids.indexOf(sel);
@@ -609,7 +677,7 @@ function liveJar(){
 function autoSet(b){
   const r=getRolls(b,lg);
   if(!r.length){const s=new Set();if(gameScore(b,lg))s.add('game200');return s}
-  const s=new Set(['gutter1','gutter2','openSingle','double','triple','fourBagger','clutch10','game200','foul']);
+  const s=new Set(['gutter1','gutter2','openSingle','double','triple','fourBagger','moreStrikes','clutch10','game200','foul']);
   if(getLeaves(b,lg).some(x=>typeof x==='number'))['splitCaused','splitConv','bigSplitConv'].forEach(k=>s.add(k));
   return s;
 }
@@ -1012,6 +1080,79 @@ function liveLog(){
   <button class="btn ghost" style="margin-top:8px;padding:8px 14px" data-copy="live">Copy summary</button></details>`;
 }
 
+
+// ---- Bowling poker (client) ----
+// Live hands are only ever fetched with the bowler's PIN and kept in memory on this phone.
+let pkOpen={},pkUnlocked={},pkSel={};
+const SUIT={S:'♠',H:'♥',D:'♦',C:'♣'};
+const cardHtml=(c,dim)=>`<span class="pc${'HD'.includes(c[1])?' red':''}${dim?' dim':''}" aria-label="${c[0]==='T'?'10':c[0]} of ${{S:'spades',H:'hearts',D:'diamonds',C:'clubs'}[c[1]]}">${c[0]==='T'?'10':c[0]}<i>${SUIT[c[1]]}</i></span>`;
+const backs=n=>n?Array.from({length:Math.min(n,12)},()=>'<span class="pc back" aria-hidden="true"></span>').join(''):'<span class="muted" style="font-size:.85rem">No cards yet</span>';
+function cardsDim(all,best){const left=best.slice();return all.map(c=>{const i=left.indexOf(c);if(i>=0){left.splice(i,1);return cardHtml(c,false)}return cardHtml(c,true)}).join('')}
+const pkGame=g=>(S.live&&S.live.poker&&S.live.poker.games&&S.live.poker.games[g])||{counts:{}};
+const hasPin=id=>(S.pokerPins||[]).includes(id);
+function pkPlayers(g){
+  const lu=LU().map(b=>b.id),bowled=lu.filter(id=>getRolls(id,g).length||(S.live.totals&&typeof S.live.totals[id+':'+g]==='number'));
+  const base=bowled.length?bowled:lu,c=pkGame(g).counts||{};
+  return [...new Set(base.concat(lu.filter(id=>c[id])))];
+}
+async function pkFetch(id){
+  const u=pkUnlocked[id];if(!u)return;
+  if(Date.now()-u.at>10*60000){delete pkUnlocked[id];return}
+  const x=await post({action:'pokerHand',bowlerId:id,pin:u.pin});
+  if(x.ok&&pkUnlocked[id])Object.assign(pkUnlocked[id],{cards:x.d.cards||{},tossed:x.d.tossed||{},auto:x.d.auto||{}});else if(!x.ok)delete pkUnlocked[id];
+}
+async function pkRefresh(){const ids=Object.keys(pkUnlocked);if(!ids.length||!S.live)return;await Promise.all(ids.map(pkFetch));if(!typing())render()}
+function pinForm(id,mode){
+  const pi=(k,label,ph)=>`<label class="field">${label}<input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" data-pk="${k}" data-b="${id}" placeholder="${ph}"></label>`;
+  if(mode==='unlock')return `<div class="pkform">${pi('pin','Your poker PIN','••••')}<div class="row" style="gap:8px"><button class="btn" data-pkdo="unlock" data-b="${id}">Show my cards</button><button class="btn ghost" data-pkopen="" data-b="${id}">Cancel</button></div></div>`;
+  return `<div class="pkform">${mode==='change'?pi('old','Current PIN','••••'):''}<div class="ngrid">${pi('new','New PIN (4–6 digits)','••••')}${pi('again','Type it again','••••')}</div>
+  <p class="hint" style="margin:4px 0 8px">Only ${esc(nameOf(id))} should do this, on their own phone. Nobody, including this app, can read it back.</p>
+  <div class="row" style="gap:8px"><button class="btn" data-pkdo="set" data-b="${id}">${mode==='change'?'Change PIN':'Set PIN'}</button><button class="btn ghost" data-pkopen="" data-b="${id}">Cancel</button></div></div>`;
+}
+function pokerStrip(b){
+  if(!S.pokerOn)return '';
+  const g=pkGame(lg),n=(g.counts||{})[b.id]||0,owes=(g.owe||{})[b.id]||0,res=g.result,u=pkUnlocked[b.id],mode=pkOpen[b.id];
+  let body='',actions='';
+  if(res){
+    const hd=res.hands&&res.hands[b.id];
+    body=hd&&hd.c.length?`<div class="pcs">${cardsDim(hd.c,hd.best)}</div><span class="pkname">${esc(hd.name)}${res.winners.includes(b.id)?' <b class="win">Winner</b>':''}</span>`:'<span class="muted" style="font-size:.85rem">No cards this game</span>';
+  } else if(u&&u.cards){
+    const mine=u.cards[lg]||[],bh=bestHand(mine),owe=Math.max(0,mine.length-5),tossed=(u.tossed||{})[lg]||[],autoT=(u.auto||{})[lg]||[];
+    const sel=pkSel[b.id]=pkSel[b.id]||new Set();[...sel].forEach(x=>{if(!mine.includes(x))sel.delete(x)});
+    if(u.hidden)body=`<div class="pcs">${backs(mine.length)}</div>`;
+    else if(owe){
+      body=`<p class="owe"><b>Toss ${owe}.</b> You can hold 5. Tap ${owe===1?'the card':`${owe} cards`} to throw away.</p>
+      <div class="pcs">${mine.map(c=>`<button class="pcbtn${sel.has(c)?' on':''}" data-pktoss="${c}" data-b="${b.id}" aria-pressed="${sel.has(c)}">${cardHtml(c,false)}</button>`).join('')}</div>
+      <div class="row" style="gap:8px;margin-top:8px;align-items:center"><button class="btn" style="padding:8px 14px" data-pkdiscard="${b.id}" ${sel.size===owe?'':'disabled'}>Toss ${sel.size===owe?[...sel].map(c=>(c[0]==='T'?'10':c[0])+SUIT[c[1]]).join(' '):`${owe} card${owe>1?'s':''}`}</button></div>
+      <p class="hint" style="margin:6px 0 0">Toss before the next bowler throws, or the app keeps your best 5 for you.</p>`;
+    }
+    else body=`<div class="pcs">${mine.length?cardsDim(mine,bh.cards):'<span class="muted" style="font-size:.85rem">No cards yet</span>'}</div>${mine.length?`<span class="pkname">${esc(bh.name)}</span>`:''}`;
+    if(!u.hidden&&tossed.length)body+=`<div class="tossed"><small class="muted">Tossed</small><span class="pcs sm">${tossed.map(c=>cardHtml(c,true)).join('')}</span>${autoT.length?`<small class="muted">${autoT.length===tossed.length?'The app kept your best 5.':`${autoT.length} tossed by the app to keep your best 5.`}</small>`:''}</div>`;
+    actions=`<button class="linkbtn" data-pkhide="${b.id}">${u.hidden?'Show':'Hide'}</button><button class="linkbtn" data-pklock="${b.id}">Lock</button>`;
+  } else {
+    body=`<div class="pcs">${backs(n)}</div>`;
+    actions=hasPin(b.id)?`<button class="linkbtn" data-pkopen="unlock" data-b="${b.id}">See my cards</button>`:`<button class="linkbtn" data-pkopen="set" data-b="${b.id}">Set PIN to see cards</button>`;
+  }
+  const manual=!res&&!getRolls(b.id,lg).length?`<span class="pkman"><button class="cb ok" data-pkmark="1" data-b="${b.id}" aria-label="Add a card for a strike or spare">+ Card</button><button class="cb miss" data-pkmark="-1" data-b="${b.id}" ${n?'':'disabled'} aria-label="Remove last card">−</button></span>`:'';
+  return `<div class="poker"><div class="pkhead"><span><b>Poker</b> <small class="muted">G${lg+1}, ${n} card${n===1?'':'s'}</small>${owes&&!res?` <small class="owetag">owes ${owes}</small>`:''}</span><span class="pkact">${actions}</span></div>${body}
+  ${manual?`<div class="pkmanrow"><small class="muted">Not scoring frames: tap + Card for each strike or spare.</small>${manual}</div>`:''}
+  ${mode&&!res?pinForm(b.id,mode):''}</div>`;
+}
+function pokerPanel(){
+  if(!S.pokerOn)return '';
+  const g=pkGame(lg),res=g.result,ante=+((S.jar||{}).pokerAnte)||0,counts=g.counts||{};
+  if(res){
+    const rows=res.players.slice().sort((a,b)=>cmpHand(res.hands[b].score,res.hands[a].score)).map(id=>{const hd=res.hands[id];
+      return `<div class="pkrow${res.winners.includes(id)?' won':''}"><span class="name">${esc(nameOf(id))}</span><span class="pcs sm">${hd.c.length?cardsDim(hd.c,hd.best):'–'}</span><span class="pkname">${esc(hd.name)}</span>${(hd.tossed||[]).length?`<span class="tossrow"><small class="muted">Tossed</small> <span class="pcs sm">${hd.tossed.map(c=>cardHtml(c,true)).join('')}</span></span>`:''}</div>`}).join('');
+    return `<div class="pkpanel"><div class="pkhead"><b>Poker, game ${lg+1}: shown</b><span>${res.pot?`Pot ${money(res.pot)}`:''}</span></div>${rows}
+    <p class="hint" style="margin:8px 0 0">${res.note?esc(res.note):`${esc(res.winners.map(nameOf).join(' & '))} ${res.winners.length>1?'split':'takes'} ${res.pot?money(res.pot):'the hand'}${res.pot?` (${res.players.length} × ${money(res.ante)} ante)`:''}.`}</p></div>`;
+  }
+  const pl=pkPlayers(lg),any=Object.values(counts).some(n=>n);
+  return `<div class="pkpanel"><div class="pkhead"><b>Poker, game ${lg+1}</b><span>${ante&&pl.length>1?`Pot ${money(ante*pl.length)}`:''}</span></div>
+  <p class="muted" style="margin:4px 0 8px;font-size:.88rem">${pl.map(id=>`${esc(nameOf(id))} ${(counts[id]||0)}${(g.owe||{})[id]?` (owes ${g.owe[id]})`:''}`).join(', ')} cards. Strikes and spares each draw a card; hold 5 max. Best hand wins${ante?`; everyone antes ${money(ante)}`:''}.</p>
+  <button class="btn ghost" style="padding:8px 14px" data-pkshow="${lg}" ${any?'':'disabled'}>Showdown game ${lg+1}</button><span class="muted" style="font-size:.8rem;margin-left:8px">Any hand still face down shows when you finish the night.</span></div>`;
+}
+
 // ---- Chump & Hero ----
 function judge(night){
   const out=[];
@@ -1152,6 +1293,7 @@ function card(b){
   {const cs=cornerStats(b.id,true),deckGame=getLeaves(b.id,lg).some(x=>typeof x==='number'),n=noteOf(b.id+':'+lg);
    h+=`<div class="corner"><span>${cs.pin}-pin tonight <b>${cs.att?`${cs.made} of ${cs.att}`:'–'}</b>${handOf(b.id)?'':' <small class="muted">(set R/L on Team)</small>'}</span>`+
      (deckGame?`<small class="muted">Auto from pin deck</small>`:`<span class="cbtns"><button class="cb ok" data-corner="m" data-b="${b.id}">Made</button><button class="cb no" data-corner="x" data-b="${b.id}">Missed</button>${(+n.cm||0)+(+n.cx||0)?`<button class="linkbtn" data-corner="u" data-b="${b.id}" aria-label="Undo last ${cs.pin}-pin entry">Undo</button>`:''}</span>`)+'</div>'}
+  h+=pokerStrip(b);
   h+=shotBlock(b);
   h+=notesBlock(b);
   if(foot.length)h+=`<div class="bfoot">${foot.join('')}</div>`;
@@ -1216,6 +1358,7 @@ function vLive(){
   h+=lineupBlock();
   h+=LU().map(card).join('');
   if(showScores)h+=`<label class="autosw"><input type="checkbox" id="autoSw" ${auto?'checked':''}> When scoring frames, jump to the next bowler after each frame</label>`;
+  h+=pokerPanel();
   h+=liveLog();
   h+=board();
   h+=`<div class="row" style="margin-top:18px;justify-content:space-between"><button class="btn" id="finishLive">Finish night</button><button class="linkbtn danger" id="cancelLive">Discard this night</button></div>`;
@@ -1242,6 +1385,7 @@ function vJar(){
   };
   h+=`<div class="rules"><div class="rhead"><b>Fines</b><span class="muted">Tossed in as soon as the ball returns</span></div>${FINES.map(row).join('')}${row(RULE.chump)}`;
   h+=`<div class="rhead"><b>Bounties</b><span class="muted">Pulled from the jar by the shooter</span></div>${BOUNTIES.map(row).join('')}`;
+  h+=`<div class="rhead"><b>Bowling poker</b><span class="muted">Strikes and spares draw cards; best hand each game takes the antes</span></div>`+(editJar?`<label class="rulerow edit"><span>Play bowling poker</span><input type="checkbox" id="pokerOnIn" ${S.pokerOn?'checked':''}></label>${row(RULE.pokerAnte)}`:S.pokerOn?row(RULE.pokerAnte):'<div class="rulerow"><span>Bowling poker</span><b>Off</b></div>');
   const cs=customs();
   h+=`<div class="rhead"><b>Custom buttons</b><span class="muted">Your team’s own fines and bounties</span></div>`;
   h+=cs.length?cs.map(x=>editJar?`<label class="rulerow edit"><span><span class="kind ${x.fine?'f':'w'}">${x.fine?'Fine':'Bounty'}</span> ${esc(x.label)}</span><span class="amtin">$<input type="number" min="0" step="0.25" inputmode="decimal" data-cjar="${x.k}" value="${x.amt.toFixed(2)}"></span></label>`
@@ -1332,15 +1476,26 @@ function vHistory(){
       Object.keys(n.notes).filter(k=>k!=='lanes').sort().forEach(k=>{const [b,g]=k.split(':'),x=n.notes[k],s1=lineSummary(x),ln=Object.entries(x.lanes||{}).filter(([,y])=>y.note).map(([l,y])=>` Lane ${l}: ${esc(y.note)}.`).join('');if(s1||x.note||ln)rows.push(`<p class="jarline"><b>${esc(nameOf(b))} G${+g+1}</b> ${esc(s1)}${x.note?`. ${esc(x.note)}`:''}${ln?`<br><span class="muted">${ln.trim()}</span>`:''}</p>`)});
       if(rows.length)nts=`<details class="sheets"><summary>Lines &amp; lane notes</summary>${rows.join('')}</details>`}
     const open=editWeek===n.id||(weekOpen[n.id]!==undefined?weekOpen[n.id]:idx===0),wt=weekTable(n,true);
+    let pk='';
+    if(n.poker&&Object.keys(n.poker).length){
+      pk=`<details class="sheets"><summary>Poker</summary>`+Object.keys(n.poker).sort().map(g=>{const r=n.poker[g];
+        return `<div class="hsg"><b>Game ${+g+1}</b>${r.note?` <span class="muted">${esc(r.note)}</span>`:` <span class="muted">${esc(r.winners.map(nameOf).join(' & '))} ${r.winners.length>1?'split':'won'}${r.pot?` ${money(r.pot)}`:''}</span>`}`+
+          r.players.slice().sort((a,b)=>cmpHand(r.hands[b].score,r.hands[a].score)).map(id=>{const hd=r.hands[id];return `<div class="pkrow${r.winners.includes(id)?' won':''}"><span class="name">${esc(nameOf(id))}</span><span class="pcs sm">${hd.c.length?cardsDim(hd.c,hd.best):'–'}</span><span class="pkname">${esc(hd.name)}</span></div>`}).join('')+'</div>'}).join('')+'</details>';
+    }
+    jar+=pk;
     return `<details class="night week" data-wk="${n.id}" ${open?'open':''}><summary><span class="date">${esc(fmtDate(n.date))}</span><span class="nsum">${esc(weekSummary(n))}</span></summary>
     ${wt||`<div class="games">${gs}</div>`}${jar}${nts}${sheets?`<details class="sheets"><summary>Scoresheets</summary>${sheets}</details>`:''}
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="linkbtn danger" data-del="${n.id}">Delete this night</button></div></details>`;
   }).join('');
 }
+function pinSection(){
+  const rows=S.bowlers.map(b=>`<div class="bowler" style="flex-wrap:wrap"><span>${esc(b.name)} <small class="muted">${hasPin(b.id)?'PIN set ✓':'No PIN'}</small></span><span class="row" style="gap:12px">${hasPin(b.id)?`<button class="linkbtn" data-pkopen="change" data-b="${b.id}">Change</button><button class="linkbtn danger" data-pkreset="${b.id}" ${S.live?'disabled title="Only between nights"':''}>Reset</button>`:`<button class="linkbtn" data-pkopen="set" data-b="${b.id}">Set PIN</button>`}</span>${pkOpen[b.id]&&!S.live?`<div style="flex-basis:100%">${pinForm(b.id,pkOpen[b.id])}</div>`:pkOpen[b.id]&&S.live&&view==='team'?`<div style="flex-basis:100%">${pinForm(b.id,pkOpen[b.id])}</div>`:''}</div>`).join('');
+  return `<h2>Poker PINs</h2><p class="hint" style="margin-top:0">Each bowler sets their own PIN on their own phone, before they draw cards. It’s the only way to see their hand before the showdown. Forgot it? Reset it between nights.</p>${rows}`;
+}
 function vTeam(){
   const list=S.bowlers.length?S.bowlers.map(b=>`<div class="bowler"><span>${esc(b.name)}</span><span class="row" style="gap:10px;flex-wrap:nowrap"><span class="seg handseg" role="group" aria-label="${esc(b.name)} bowls"><button data-hand="R" data-b="${b.id}" aria-pressed="${b.hand==='R'}">Righty</button><button data-hand="L" data-b="${b.id}" aria-pressed="${b.hand==='L'}">Lefty</button></span><button class="btn danger" data-rm="${b.id}">Remove</button></span></div>`).join(''):'<p class="muted">No bowlers yet.</p>';
   return `<h2 style="margin-top:4px">Roster</h2><p class="hint" style="margin-top:0">Everyone on the team, subs included. You pick who’s bowling each night on the Bowl night tab.</p>${list}<div class="row" style="margin-top:14px"><input type="text" id="newName" placeholder="Bowler name" maxlength="30" style="flex:1;min-width:160px"><button class="btn" id="addB">Add bowler</button></div>`+
-    `${hdcpSection()}<h2>League settings</h2><label class="field" style="max-width:220px">Games per night<input type="number" id="setGames" min="1" max="5" value="${S.games}"></label><p class="hint">Saves as soon as you change it. Jar fines and bounties are set on the Jar tab.</p>`+
+    `${S.pokerOn?pinSection():''}${hdcpSection()}<h2>League settings</h2><label class="field" style="max-width:220px">Games per night<input type="number" id="setGames" min="1" max="5" value="${S.games}"></label><p class="hint">Saves as soon as you change it. Jar fines and bounties are set on the Jar tab.</p>`+
     (S.pinRequired?`<h2>Team PIN</h2><p class="hint" style="margin-top:0">Your team requires a PIN to make changes. This phone asks for it the first time you save. Use this if the PIN changed.</p><button class="btn ghost" id="changePin">Change PIN on this phone</button>`:'');
 }
 function readDraft(){
@@ -1436,6 +1591,37 @@ function wire(){
     if(a!=='u')toast(`${nameOf(b)}: ${cornerPin(b)}-pin ${a==='m'?'made':'missed'}`);
     quiet({action:'setNote',key:k,data:d},'Could not save that.');
   });
+  all('[data-pkopen]',x=>x.onclick=()=>{const b=x.dataset.b;pkOpen[b]=x.dataset.pkopen||null;render();const f=root.querySelector(`[data-pk][data-b="${b}"]`);if(f)f.focus()});
+  all('[data-pk]',inp=>inp.onkeydown=e=>{if(e.key==='Enter'){const btn=root.querySelector(`[data-pkdo][data-b="${inp.dataset.b}"]`);if(btn)btn.click()}});
+  all('[data-pkdo]',x=>x.onclick=async()=>{
+    const b=x.dataset.b,val=k=>{const i=root.querySelector(`[data-pk="${k}"][data-b="${b}"]`);return i?i.value.trim():''};
+    if(x.dataset.pkdo==='unlock'){
+      const pin=val('pin');if(!pin){toast('Enter your PIN.');return}
+      const r=await post({action:'pokerHand',bowlerId:b,pin});
+      if(!r.ok){toast(r.d.error||'Could not check that PIN.');return}
+      pkUnlocked[b]={pin,cards:r.d.cards||{},tossed:r.d.tossed||{},auto:r.d.auto||{},at:Date.now(),hidden:false};pkOpen[b]=null;render();return;
+    }
+    const nw=val('new'),ag=val('again');
+    if(!/^\d{4,6}$/.test(nw)){toast('Use 4 to 6 digits.');return}
+    if(nw!==ag){toast('The two PINs don’t match.');return}
+    const r=await post({action:'setPokerPin',bowlerId:b,pin:nw,oldPin:val('old')});
+    if(!r.ok){toast(r.d.error||'Could not save that PIN.');return}
+    S=r.d;pkOpen[b]=null;toast(`PIN saved for ${nameOf(b)}`);
+    if(S.live){const h2=await post({action:'pokerHand',bowlerId:b,pin:nw});if(h2.ok)pkUnlocked[b]={pin:nw,cards:h2.d.cards||{},tossed:h2.d.tossed||{},auto:h2.d.auto||{},at:Date.now(),hidden:false}}
+    render();
+  });
+  all('[data-pktoss]',x=>x.onclick=()=>{const b=x.dataset.b,c=x.dataset.pktoss,s=pkSel[b]=pkSel[b]||new Set(),u=pkUnlocked[b],owe=u?Math.max(0,((u.cards||{})[lg]||[]).length-5):0;
+    if(s.has(c))s.delete(c);else{if(s.size>=owe){toast(`Pick ${owe} card${owe>1?'s':''} to toss.`);return}s.add(c)}render()});
+  all('[data-pkdiscard]',x=>x.onclick=async()=>{const b=x.dataset.pkdiscard,u=pkUnlocked[b],s=pkSel[b];if(!u||!s||!s.size)return;
+    const r=await post({action:'pokerDiscard',bowlerId:b,pin:u.pin,game:lg,cards:[...s]});
+    if(!r.ok){toast(/Pick cards from your hand|only toss/.test(r.d.error||'')?'Time’s up: the next bowler threw, so the app kept your best 5.':r.d.error||'Could not toss those cards.');pkSel[b]=new Set();await pkFetch(b);await load();return}
+    pkSel[b]=new Set();toast('Tossed. Your hand is set.');await pkFetch(b);await load();
+  });
+  all('[data-pkhide]',x=>x.onclick=()=>{const u=pkUnlocked[x.dataset.pkhide];if(u){u.hidden=!u.hidden;render()}});
+  all('[data-pklock]',x=>x.onclick=()=>{delete pkUnlocked[x.dataset.pklock];render()});
+  all('[data-pkreset]',x=>x.onclick=()=>{const b=x.dataset.pkreset;if(confirm(`Reset ${nameOf(b)}’s poker PIN? They’ll set a new one before they next draw cards.`))act({action:'resetPokerPin',bowlerId:b},'PIN reset')});
+  all('[data-pkmark]',x=>x.onclick=async()=>{await act({action:'pokerMark',bowlerId:x.dataset.b,game:lg,delta:+x.dataset.pkmark});pkRefresh()});
+  all('[data-pkshow]',x=>x.onclick=()=>{const g=+x.dataset.pkshow;if(confirm(`Show everyone’s cards for game ${g+1}? No more cards are dealt for this game after the showdown.`))act({action:'pokerReveal',game:g},'Cards are up!')});
   all('[data-shot]',d=>d.ontoggle=()=>{openNotes['s'+d.dataset.shot]=d.open});
   all('[data-sx]',btn=>btn.onclick=()=>{const b=btn.dataset.b,pair=lanePair(),f=readFrame(b,lg),lane=pair?laneFor(pair,lg,f):null,def=lineFor(b,lg,lane).mark;
     const cur=xDraft[b]!==undefined?xDraft[b]:(def!==null?def:10);xDraft[b]=Math.max(1,Math.min(39,cur+ +btn.dataset.sx));render()});
@@ -1492,7 +1678,7 @@ function wire(){
   if($('saveJar'))$('saveJar').onclick=async()=>{
     const jar={};all('[data-jar]',i=>{jar[i.dataset.jar]=Math.max(0,Math.round((+i.value||0)*4)/4)});
     const customJar=(S.customJar||[]).map(x=>{const i=root.querySelector(`[data-cjar="${x.k}"]`);return Object.assign({},x,i?{amt:Math.max(0,Math.round((+i.value||0)*4)/4)}:{})});
-    if(await act({action:'settings',jar,customJar,bigSplitPot:$('potClean').checked,bigGame:$('bigGameIn').value},'Jar amounts saved')){editJar=false;render()}
+    if(await act({action:'settings',jar,customJar,bigSplitPot:$('potClean').checked,pokerOn:$('pokerOnIn').checked,bigGame:$('bigGameIn').value},'Jar amounts saved')){editJar=false;render()}
   };
   all('[data-ftype]',b=>b.onclick=()=>{newFine=b.dataset.ftype==='1';all('[data-ftype]',x=>x.setAttribute('aria-pressed',String(x.dataset.ftype===(newFine?'1':'0'))))});
   if($('addC')){const addC=()=>{
