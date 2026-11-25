@@ -264,6 +264,16 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .pkrow .name{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pkrow .pkname{margin:0;font-size:.82rem}
 .pkrow.won .name,.pkrow.won .pkname{color:var(--green)}
+.order{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.order li{display:flex;align-items:center;gap:8px;padding:6px 8px;border:2px solid var(--line);border-radius:10px;background:var(--surface)}
+.onum{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--bg);font-weight:800;font-size:.8rem}
+.onum.sm{min-width:18px;height:18px;font-size:.7rem;margin-right:2px}
+.oname{flex:1;font-weight:800}
+.obtn{width:36px;height:32px;border-radius:8px;border:2px solid var(--line);background:var(--bg);color:var(--ink);font-weight:800;cursor:pointer}
+.obtn:disabled{opacity:.3;cursor:default}
+.upnow{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;border-radius:12px;border:2px solid var(--btn);background:var(--tealSoft)}
+.upnow.done{border-color:var(--green);background:var(--greenSoft)}
+.waitturn{margin:4px 0 8px;padding:10px 12px;border-radius:10px;background:var(--goldSoft);font-size:.92rem}
 .warnbox{margin:0 0 10px;border-left:4px solid var(--red);background:var(--redSoft);border-radius:0 10px 10px 0;padding:10px 12px;font-size:.9rem}
 .wk tr.noscore td{color:var(--muted);font-style:italic;text-align:left}
 .wk tr.noscore td.name{font-style:normal;color:var(--ink)}
@@ -428,7 +438,9 @@ const root=document.getElementById('root');
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Tonight's lineup (roster order). Outside a live night this is the whole roster.
-const LU=()=>S.live&&Array.isArray(S.live.lineup)?S.bowlers.filter(b=>S.live.lineup.includes(b.id)):S.bowlers;
+const LU=()=>S.live&&Array.isArray(S.live.lineup)?S.live.lineup.map(id=>S.bowlers.find(b=>b.id===id)).filter(Boolean):S.bowlers;
+const skipped=(id,g)=>!!(S.live&&S.live.skip&&(S.live.skip[g]||[]).includes(id));
+const curTurn=g=>turnOf(LU().map(b=>b.id),id=>getRolls(id,g),id=>skipped(id,g)||(S.live&&S.live.totals&&typeof S.live.totals[id+':'+g]==='number'));
 let pick=null;
 const nameOf=id=>{const b=S.bowlers.find(x=>x.id===id);return b?b.name:'Former bowler'};
 function today(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)}
@@ -551,6 +563,14 @@ function cardFrames(r,L){
   }
   return out;
 }
+// Whose turn it is: everyone bowls frame 1 in lineup order, then frame 2, and so on.
+// out(id) = not bowling frames this game (typed total or skipped). Returns {id, frame} or null when all are done.
+function turnOf(order,rollsOf,out){
+  let best=null,min=99;
+  order.forEach(id=>{if(out(id))return;const nb=nextBall(rollsOf(id)||[]);if(nb.done)return;if(nb.frame<min){min=nb.frame;best=id}});
+  return best?{id:best,frame:min}:null;
+}
+const framesDone=r=>{const nb=nextBall(r||[]);return nb.done?10:nb.frame};
 // Score up to 5 cards. Straights and flushes need all 5; fewer cards can still make pairs, trips and quads.
 function score5(cs){
   const rv=cs.map(c=>RANKS.indexOf(c[0])+2).sort((a,b)=>b-a),cnt={};rv.forEach(v=>cnt[v]=(cnt[v]||0)+1);
@@ -633,8 +653,7 @@ async function flush(){
   flushing=false;if(!typing())render();pkRefresh();
 }
 function advance(){
-  deckUp=new Set();const ids=LU().map(b=>b.id);const i=ids.indexOf(sel);
-  for(let s=1;s<=ids.length;s++){const id=ids[(i+s)%ids.length];if(!nextBall(getRolls(id,lg)).done){sel=padFor=id;return}}
+  deckUp=new Set();const t=curTurn(lg);if(t){sel=padFor=t.id}
 }
 function roll(n,mask,mk){
   const r=getRolls(sel,lg).slice(),nb=nextBall(r);
@@ -1145,7 +1164,7 @@ function pokerStrip(b){
     body=`<div class="pcs">${backs(n)}</div>`;
     actions=hasPin(b.id)?`<button class="linkbtn" data-pkopen="unlock" data-b="${b.id}">See my cards</button>`:`<button class="linkbtn" data-pkopen="set" data-b="${b.id}">Set PIN to see cards</button>`;
   }
-  const manual=!res&&!getRolls(b.id,lg).length?`<span class="pkman"><button class="cb ok" data-pkmark="1" data-b="${b.id}" aria-label="Add a card for a strike or spare">+ Card</button><button class="cb miss" data-pkmark="-1" data-b="${b.id}" ${n?'':'disabled'} aria-label="Remove last card">−</button></span>`:'';
+  const manual=!res&&!showScores&&!getRolls(b.id,lg).length?`<span class="pkman"><button class="cb ok" data-pkmark="1" data-b="${b.id}" aria-label="Add a card for a strike or spare">+ Card</button><button class="cb miss" data-pkmark="-1" data-b="${b.id}" ${n?'':'disabled'} aria-label="Remove last card">−</button></span>`:'';
   return `<div class="poker"><div class="pkhead"><span><b>Poker</b> <small class="muted">G${lg+1}, ${n} card${n===1?'':'s'}</small>${owes&&!res?` <small class="owetag">owes ${owes}</small>`:''}</span><span class="pkact">${actions}</span></div>${body}
   ${manual?`<div class="pkmanrow"><small class="muted">Not scoring frames: + Card for each strike or spare, twice for each strike after the first in a row. Split made adds its extra card.</small>${manual}</div>`:''}
   ${mode&&!res?pinForm(b.id,mode):''}</div>`;
@@ -1213,7 +1232,8 @@ function vTonight(){
   const last=S.nights.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created).find(n=>Array.isArray(n.lineup));
   const lastIds=last?last.lineup.filter(id=>S.bowlers.some(b=>b.id===id)):[];
   return spotlight()+lastWeekCard()+`<h2 style="margin-top:4px">Tonight</h2><div class="lane"><p style="margin:0 0 10px"><b>Who’s bowling?</b> <span class="muted">${pick.size} of ${S.bowlers.length} picked</span></p>
-  <div class="chips wrap">${S.bowlers.map(b=>`<button class="chip" data-pick="${b.id}" aria-pressed="${pick.has(b.id)}">${pick.has(b.id)?'✓ ':''}${esc(b.name)}</button>`).join('')}</div>
+  <div class="chips wrap">${S.bowlers.map(b=>{const n=[...pick].indexOf(b.id);return `<button class="chip" data-pick="${b.id}" aria-pressed="${n>=0}">${n>=0?`<b class="onum sm">${n+1}</b>`:''}${esc(b.name)}</button>`}).join('')}</div>
+  ${pick.size>1?`<p class="hint" style="margin:8px 0 4px">Bowling order (the order you tap them). Adjust with the arrows.</p>${orderList([...pick],'mvpick')}`:''}
   <div class="row" style="gap:16px;margin:4px 0 14px"><button class="linkbtn" data-pickall="1">Everyone</button>${lastIds.length?`<button class="linkbtn" data-picklast="1">Same as last night (${lastIds.length})</button>`:''}</div>
   <p style="margin:0 0 12px" class="muted">Everyone picked gets fine and bounty buttons. Anyone on the team can tap them from their own phone.</p><div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:150px">Date<input type="date" id="liveDate" value="${today()}"></label><button class="btn" id="startLive">Start night</button></div></div>`+
     `<details class="quick" id="quick" ${quickOpen||draft?'open':''}><summary>Logging scores from a past night? Enter totals</summary>${totalsForm()}</details>`;
@@ -1291,7 +1311,10 @@ function card(b){
   else if(padFor===b.id){h+=`<div class="scorewrap">${scores}`;
     const r=getRolls(b.id,lg),L=getLeaves(b.id,lg),sc=scoreGame(r),nb=nextBall(r);
     const status=nb.done?`Game ${lg+1} final: ${sc.total}`:`Game ${lg+1}, frame ${nb.frame+1}, ball ${nb.ball+1}`+(nb.max<10?`. ${nb.max} standing`:'');
-    h+=`</div><div class="padwrap"><div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="muted">${status}</span><button class="linkbtn" id="closePad">Close frames</button></div>${sheet(sc,nb,false,r,L,getMarks(b.id,lg))}<div style="margin-top:10px">${entry(nb,r,L)}</div></div>`;
+    h+=`</div><div class="padwrap"><div class="row" style="justify-content:space-between;margin-bottom:8px"><span class="muted">${status}</span><button class="linkbtn" id="closePad">Close frames</button></div>${sheet(sc,nb,false,r,L,getMarks(b.id,lg))}<div style="margin-top:10px">${(()=>{const t=curTurn(lg);
+      if(skipped(b.id,lg))return `<p class="waitturn">${esc(b.name)} is sitting out game ${lg+1}. <button class="linkbtn" data-skip="${b.id}" data-on="0">Bowl this game</button></p>`;
+      if(t&&t.id!==b.id&&!nb.done)return `<p class="waitturn">Waiting on <b>${esc(nameOf(t.id))}</b> to finish frame ${t.frame+1}.</p><div class="row" style="justify-content:space-between"><button class="btn ghost" id="undo" ${r.length?'':'disabled'}>Undo</button><button class="linkbtn" data-frames="${t.id}" data-fg="${lg}">Score ${esc(nameOf(t.id))}</button></div>`;
+      return entry(nb,r,L)})()}</div></div>`;
   } else {
     h+=`<div class="scorewrap">${scores}`;
     const hasTyped=S.live.totals&&typeof S.live.totals[b.id+':'+lg]==='number';
@@ -1353,10 +1376,14 @@ function hasTonight(id){
   for(let g=0;g<S.games;g++)if(getRolls(id,g).length||(S.live.totals&&typeof S.live.totals[id+':'+g]==='number'))return true;
   return (S.live.jar||[]).some(e=>e.b===id);
 }
+function orderList(ids,attr){
+  return `<ol class="order">${ids.map((id,i)=>`<li><span class="onum">${i+1}</span><span class="oname">${esc(nameOf(id))}</span><button class="obtn" data-${attr}="${i}" data-d="-1" ${i?'':'disabled'} aria-label="Move ${esc(nameOf(id))} up">↑</button><button class="obtn" data-${attr}="${i}" data-d="1" ${i<ids.length-1?'':'disabled'} aria-label="Move ${esc(nameOf(id))} down">↓</button></li>`).join('')}</ol>`;
+}
 function lineupBlock(){
   const on=LU().map(b=>b.id);
-  return `<details class="lanesbox" id="lineupBox" ${openNotes.lineup?'open':''}><summary>Bowling tonight: ${on.length} of ${S.bowlers.length}<span class="nsum">${esc(LU().map(b=>b.name).join(', '))}</span></summary>
-  <p class="hint" style="margin:8px 0">Tap to add a sub or sit someone out.</p><div class="chips wrap">${S.bowlers.map(b=>`<button class="chip" data-lu="${b.id}" aria-pressed="${on.includes(b.id)}">${on.includes(b.id)?'✓ ':''}${esc(b.name)}</button>`).join('')}</div></details>`;
+  return `<details class="lanesbox" id="lineupBox" ${openNotes.lineup?'open':''}><summary>Bowling tonight: ${on.length} of ${S.bowlers.length}<span class="nsum">${esc(LU().map((b,i)=>`${i+1}. ${b.name}`).join('  '))}</span></summary>
+  <p class="hint" style="margin:8px 0 4px">Bowling order. Use the arrows to change it.</p>${orderList(on,'mvlu')}
+  <p class="hint" style="margin:10px 0 8px">Tap to add a sub or sit someone out.</p><div class="chips wrap">${S.bowlers.map(b=>`<button class="chip" data-lu="${b.id}" aria-pressed="${on.includes(b.id)}">${on.includes(b.id)?'✓ ':''}${esc(b.name)}</button>`).join('')}</div></details>`;
 }
 function vLive(){
   const L=S.live;if(lg>=S.games)lg=0;
@@ -1368,6 +1395,9 @@ function vLive(){
   h+=lanesBlock();
   h+=`<label class="autosw" style="margin:0 0 14px"><input type="checkbox" id="scoreSw" ${showScores?'checked':''}> Track scores and frames (needed for Stats)</label>`;
   h+=lineupBlock();
+  if(showScores){const t=curTurn(lg),any=LU().some(b=>getRolls(b.id,lg).length);
+    h+=t?`<div class="upnow"><span>Up now: <b>${esc(nameOf(t.id))}</b>, frame ${t.frame+1}</span><span class="row" style="gap:12px">${padFor!==t.id?`<button class="btn" style="padding:8px 14px" data-frames="${t.id}" data-fg="${lg}">Score</button>`:''}<button class="linkbtn" data-skip="${t.id}" data-on="1">Skip ${esc(nameOf(t.id))} this game</button></span></div>`
+      :any?`<div class="upnow done"><span>Game ${lg+1} is complete.</span></div>`:''}
   h+=LU().map(card).join('');
   if(showScores)h+=`<label class="autosw"><input type="checkbox" id="autoSw" ${auto?'checked':''}> When scoring frames, jump to the next bowler after each frame</label>`;
   h+=pokerPanel();
@@ -1530,6 +1560,10 @@ function wire(){
   all('[data-pickall]',b=>b.onclick=()=>{pick=new Set(S.bowlers.map(x=>x.id));render()});
   all('[data-picklast]',b=>b.onclick=()=>{const last=S.nights.slice().sort((a,c)=>c.date.localeCompare(a.date)||c.created-a.created).find(n=>Array.isArray(n.lineup));if(last){pick=new Set(last.lineup.filter(id=>S.bowlers.some(x=>x.id===id)));render()}});
   if($('lineupBox'))$('lineupBox').ontoggle=()=>{openNotes.lineup=$('lineupBox').open};
+  all('[data-mvpick]',b=>b.onclick=()=>{const a=[...pick],i=+b.dataset.mvpick,j=i+ +b.dataset.d;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];pick=new Set(a);render()});
+  all('[data-mvlu]',b=>b.onclick=()=>{const a=LU().map(x=>x.id),i=+b.dataset.mvlu,j=i+ +b.dataset.d;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];S.live.lineup=a;render();quiet({action:'setLineup',lineup:a},'Could not save the order.')});
+  all('[data-skip]',b=>b.onclick=()=>{const id=b.dataset.skip,on=b.dataset.on==='1';if(on&&!confirm(`Skip ${nameOf(id)} for game ${lg+1}? The next bowler can go. Tap “Bowl this game” on their card to undo.`))return;
+    if(padFor===id&&on)padFor=null;act({action:'skipTurn',bowlerId:id,game:lg,on},on?`${nameOf(id)} is sitting out game ${lg+1}`:`${nameOf(id)} is back in game ${lg+1}`)});
   all('[data-lu]',b=>b.onclick=()=>{
     const id=b.dataset.lu,on=LU().map(x=>x.id);
     let next;
