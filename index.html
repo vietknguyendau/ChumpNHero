@@ -264,6 +264,16 @@ td.jar small{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
 .pkrow .name{font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pkrow .pkname{margin:0;font-size:.82rem}
 .pkrow.won .name,.pkrow.won .pkname{color:var(--green)}
+.dlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;position:relative}
+.dlist li{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 4px;border:2px solid var(--line);border-radius:12px;background:var(--surface);transition:transform .15s ease;touch-action:pan-y}
+.dlist li.dragging{transition:none;z-index:5;border-color:var(--btn);box-shadow:0 8px 20px rgba(0,0,0,.35);background:var(--tealSoft)}
+.handle{touch-action:none;cursor:grab;border:0;background:transparent;color:var(--muted);font-size:1.3rem;line-height:1;padding:8px 8px;border-radius:8px}
+.dlist li.dragging .handle{cursor:grabbing;color:var(--ink)}
+.dx{margin-left:auto;width:34px;height:34px;border-radius:50%;border:2px solid var(--line);background:var(--bg);color:var(--muted);font-weight:800;font-size:1.1rem;cursor:pointer}
+.dx:hover{color:var(--red);border-color:var(--red)}
+.notb{margin-top:10px}
+.notb .chips{margin-top:6px}
+@media (prefers-reduced-motion:reduce){.dlist li{transition:none}}
 .order{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .order li{display:flex;align-items:center;gap:8px;padding:6px 8px;border:2px solid var(--line);border-radius:10px;background:var(--surface)}
 .onum{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--bg);font-weight:800;font-size:.8rem}
@@ -1209,6 +1219,7 @@ const pinSvg='<svg viewBox="0 0 40 80" aria-hidden="true"><path fill="currentCol
 
 // ---- views ----
 function render(){
+  if(dragging){renderLater=true;return}
   let h=`<header class="top"><div class="brand">${LOGO}<div><h1>Chump <span class="amp">&amp;</span> Hero</h1><button class="teamname" id="renameTeam" aria-label="Rename team">${esc(S.team)}</button></div></div><div class="mode">${loaded?(S.live?'<span class="dot"></span>Live night':'Shared with your team'):loadError?'Can’t reach the server':'Loading…'}</div></header>`;
   h+='<nav class="tabs" role="tablist">'+[['tonight','Bowl night'],['standings','Standings'],['stats','Stats'],['jar','Jar'],['history','History'],['team','Team']].map(t=>`<button role="tab" data-view="${t[0]}" aria-selected="${view===t[0]}">${t[1]}</button>`).join('')+'</nav>';
   if(!loaded)h+=loadError?'<div class="empty"><p><b>Couldn’t load your team’s data.</b></p><p>Check your connection, or make sure the database is connected in Vercel.</p><button class="btn" id="retry">Try again</button></div>':'<div class="empty">Loading scores…</div>';
@@ -1227,14 +1238,13 @@ function spotlight(){
 function vTonight(){
   if(!S.bowlers.length)return '<div class="empty"><p><b>Add your roster first.</b></p><p>Head to the Team tab and add everyone who bowls with you.</p><button class="btn" data-go="team">Add bowlers</button></div>';
   if(S.live)return vLive();
-  if(!pick)pick=new Set(S.bowlers.map(b=>b.id));
-  [...pick].forEach(id=>{if(!S.bowlers.some(b=>b.id===id))pick.delete(id)});
   const last=S.nights.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.created-a.created).find(n=>Array.isArray(n.lineup));
   const lastIds=last?last.lineup.filter(id=>S.bowlers.some(b=>b.id===id)):[];
-  return spotlight()+lastWeekCard()+`<h2 style="margin-top:4px">Tonight</h2><div class="lane"><p style="margin:0 0 10px"><b>Who’s bowling?</b> <span class="muted">${pick.size} of ${S.bowlers.length} picked</span></p>
-  <div class="chips wrap">${S.bowlers.map(b=>{const n=[...pick].indexOf(b.id);return `<button class="chip" data-pick="${b.id}" aria-pressed="${n>=0}">${n>=0?`<b class="onum sm">${n+1}</b>`:''}${esc(b.name)}</button>`}).join('')}</div>
-  ${pick.size>1?`<p class="hint" style="margin:8px 0 4px">Bowling order (the order you tap them). Adjust with the arrows.</p>${orderList([...pick],'mvpick')}`:''}
-  <div class="row" style="gap:16px;margin:4px 0 14px"><button class="linkbtn" data-pickall="1">Everyone</button>${lastIds.length?`<button class="linkbtn" data-picklast="1">Same as last night (${lastIds.length})</button>`:''}</div>
+  if(!pick)pick=new Set(lastIds.length?lastIds:S.bowlers.map(b=>b.id));
+  [...pick].forEach(id=>{if(!S.bowlers.some(b=>b.id===id))pick.delete(id)});
+  return spotlight()+lastWeekCard()+`<h2 style="margin-top:4px">Tonight</h2><div class="lane"><p style="margin:0 0 4px"><b>Who’s bowling, in order</b> <span class="muted">${pick.size} of ${S.bowlers.length}</span></p>
+  ${dragList([...pick],'pick')}
+  <div class="row" style="gap:16px;margin:8px 0 14px"><button class="linkbtn" data-pickall="1">Everyone</button>${lastIds.length?`<button class="linkbtn" data-picklast="1">Same as last night (${lastIds.length})</button>`:''}</div>
   <p style="margin:0 0 12px" class="muted">Everyone picked gets fine and bounty buttons. Anyone on the team can tap them from their own phone.</p><div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:150px">Date<input type="date" id="liveDate" value="${today()}"></label><button class="btn" id="startLive">Start night</button></div></div>`+
     `<details class="quick" id="quick" ${quickOpen||draft?'open':''}><summary>Logging scores from a past night? Enter totals</summary>${totalsForm()}</details>`;
 }
@@ -1376,14 +1386,52 @@ function hasTonight(id){
   for(let g=0;g<S.games;g++)if(getRolls(id,g).length||(S.live.totals&&typeof S.live.totals[id+':'+g]==='number'))return true;
   return (S.live.jar||[]).some(e=>e.b===id);
 }
-function orderList(ids,attr){
-  return `<ol class="order">${ids.map((id,i)=>`<li><span class="onum">${i+1}</span><span class="oname">${esc(nameOf(id))}</span><button class="obtn" data-${attr}="${i}" data-d="-1" ${i?'':'disabled'} aria-label="Move ${esc(nameOf(id))} up">↑</button><button class="obtn" data-${attr}="${i}" data-d="1" ${i<ids.length-1?'':'disabled'} aria-label="Move ${esc(nameOf(id))} down">↓</button></li>`).join('')}</ol>`;
+// Lineup editor: drag rows by the handle (finger or mouse) to set the bowling order.
+// ctx 'pick' edits tonight's picks before the night starts; 'live' edits the night in progress.
+function dragList(ids,ctx){
+  const out=S.bowlers.filter(b=>!ids.includes(b.id));
+  return `<p class="hint" style="margin:0 0 6px">Drag <span aria-hidden="true">⠿</span> to change the order. × sits someone out.</p>
+  <ol class="dlist" data-dl="${ctx}">${ids.map((id,i)=>`<li data-id="${id}"><button class="handle" data-h="${i}" aria-label="Move ${esc(nameOf(id))}, bowling ${i+1}. Use arrow keys." aria-roledescription="drag handle">⠿</button><span class="onum">${i+1}</span><span class="oname">${esc(nameOf(id))}</span><button class="dx" data-dout="${id}" data-ctx="${ctx}" aria-label="Sit ${esc(nameOf(id))} out">×</button></li>`).join('')}</ol>
+  ${ids.length?'':'<p class="muted" style="margin:4px 0">Nobody yet. Add bowlers below.</p>'}
+  ${out.length?`<div class="notb"><small class="muted">Not bowling</small><div class="chips wrap">${out.map(b=>`<button class="chip" data-din="${b.id}" data-ctx="${ctx}">+ ${esc(b.name)}</button>`).join('')}</div></div>`:''}`;
+}
+let dragging=false,renderLater=false;
+function setOrder(ctx,ids){
+  if(ctx==='pick'){pick=new Set(ids);render();return}
+  S.live.lineup=ids.slice();render();quiet({action:'setLineup',lineup:ids},'Could not save the order.');
+}
+function wireDrag(){
+  root.querySelectorAll('.dlist').forEach(list=>{
+    const ctx=list.dataset.dl,ids=()=>[...list.children].map(li=>li.dataset.id);
+    list.querySelectorAll('.handle').forEach(hd=>{
+      hd.onkeydown=e=>{if(e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;e.preventDefault();const a=ids(),i=+hd.dataset.h,j=i+(e.key==='ArrowUp'?-1:1);if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];setOrder(ctx,a);
+        const nh=root.querySelector(`.dlist[data-dl="${ctx}"] .handle[data-h="${j}"]`);if(nh)nh.focus()};
+      hd.onpointerdown=e=>{
+        if(e.button!==undefined&&e.button!==0)return;e.preventDefault();
+        const li=hd.closest('li'),items=[...list.children],from=items.indexOf(li),rects=items.map(x=>x.getBoundingClientRect());
+        const step=rects.length>1?rects[1].top-rects[0].top:rects[0].height,startY=e.clientY;let to=from;
+        dragging=true;li.classList.add('dragging');try{hd.setPointerCapture(e.pointerId)}catch(x){}
+        const move=ev=>{
+          const dy=ev.clientY-startY,mid=rects[from].top+rects[from].height/2+dy;
+          li.style.transform=`translateY(${dy}px)`;
+          to=items.filter((x,i)=>i!==from&&rects[i].top+rects[i].height/2<mid).length;
+          items.forEach((x,i)=>{if(x===li)return;let s=0;if(from<to&&i>from&&i<=to)s=-step;if(from>to&&i<from&&i>=to)s=step;x.style.transform=s?`translateY(${s}px)`:''});
+        };
+        const up=()=>{
+          hd.removeEventListener('pointermove',move);hd.onpointerup=hd.onpointercancel=null;
+          dragging=false;li.classList.remove('dragging');items.forEach(x=>x.style.transform='');
+          const a=ids();if(to!==from){const [m]=a.splice(from,1);a.splice(to,0,m);setOrder(ctx,a);if(navigator.vibrate)try{navigator.vibrate(10)}catch(x){}}
+          else if(renderLater){renderLater=false;render()}
+        };
+        hd.addEventListener('pointermove',move);hd.onpointerup=up;hd.onpointercancel=up;
+      };
+    });
+  });
 }
 function lineupBlock(){
   const on=LU().map(b=>b.id);
   return `<details class="lanesbox" id="lineupBox" ${openNotes.lineup?'open':''}><summary>Bowling tonight: ${on.length} of ${S.bowlers.length}<span class="nsum">${esc(LU().map((b,i)=>`${i+1}. ${b.name}`).join('  '))}</span></summary>
-  <p class="hint" style="margin:8px 0 4px">Bowling order. Use the arrows to change it.</p>${orderList(on,'mvlu')}
-  <p class="hint" style="margin:10px 0 8px">Tap to add a sub or sit someone out.</p><div class="chips wrap">${S.bowlers.map(b=>`<button class="chip" data-lu="${b.id}" aria-pressed="${on.includes(b.id)}">${on.includes(b.id)?'✓ ':''}${esc(b.name)}</button>`).join('')}</div></details>`;
+  <div style="margin-top:8px">${dragList(on,'live')}</div></details>`;
 }
 function vLive(){
   const L=S.live;if(lg>=S.games)lg=0;
@@ -1560,6 +1608,15 @@ function wire(){
   all('[data-pickall]',b=>b.onclick=()=>{pick=new Set(S.bowlers.map(x=>x.id));render()});
   all('[data-picklast]',b=>b.onclick=()=>{const last=S.nights.slice().sort((a,c)=>c.date.localeCompare(a.date)||c.created-a.created).find(n=>Array.isArray(n.lineup));if(last){pick=new Set(last.lineup.filter(id=>S.bowlers.some(x=>x.id===id)));render()}});
   if($('lineupBox'))$('lineupBox').ontoggle=()=>{openNotes.lineup=$('lineupBox').open};
+  wireDrag();
+  all('[data-dout]',x=>x.onclick=()=>{const id=x.dataset.dout;
+    if(x.dataset.ctx==='pick'){pick.delete(id);render();return}
+    const on=LU().map(b=>b.id);if(on.length===1){toast('Keep at least one bowler in tonight’s lineup.');return}
+    if(hasTonight(id)&&!confirm(`${nameOf(id)} already has scores or jar entries tonight. Sit them out? Their entries won’t count unless you add them back.`))return;
+    if(padFor===id)padFor=null;act({action:'setLineup',lineup:on.filter(b=>b!==id)},`${nameOf(id)} is sitting out`)});
+  all('[data-din]',x=>x.onclick=()=>{const id=x.dataset.din;
+    if(x.dataset.ctx==='pick'){pick.add(id);render();return}
+    act({action:'setLineup',lineup:LU().map(b=>b.id).concat([id])},`${nameOf(id)} added to tonight`)});
   all('[data-mvpick]',b=>b.onclick=()=>{const a=[...pick],i=+b.dataset.mvpick,j=i+ +b.dataset.d;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];pick=new Set(a);render()});
   all('[data-mvlu]',b=>b.onclick=()=>{const a=LU().map(x=>x.id),i=+b.dataset.mvlu,j=i+ +b.dataset.d;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];S.live.lineup=a;render();quiet({action:'setLineup',lineup:a},'Could not save the order.')});
   all('[data-skip]',b=>b.onclick=()=>{const id=b.dataset.skip,on=b.dataset.on==='1';if(on&&!confirm(`Skip ${nameOf(id)} for game ${lg+1}? The next bowler can go. Tap “Bowl this game” on their card to undo.`))return;
@@ -1771,7 +1828,7 @@ render();load();
 let tick=0;
 setInterval(()=>{
   tick++;
-  if(document.hidden||busy||flushing||pendingJar.length||Object.keys(ov).length||typing())return;
+  if(dragging||document.hidden||busy||flushing||pendingJar.length||Object.keys(ov).length||typing())return;
   if(S.live||tick%4===0)load();
 },5000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});

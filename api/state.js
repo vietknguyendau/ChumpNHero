@@ -195,6 +195,14 @@ function cardFrames(r,L){
   }
   return out;
 }
+// Whose turn it is: everyone bowls frame 1 in lineup order, then frame 2, and so on.
+// out(id) = not bowling frames this game (typed total or skipped). Returns {id, frame} or null when all are done.
+function turnOf(order,rollsOf,out){
+  let best=null,min=99;
+  order.forEach(id=>{if(out(id))return;const nb=nextBall(rollsOf(id)||[]);if(nb.done)return;if(nb.frame<min){min=nb.frame;best=id}});
+  return best?{id:best,frame:min}:null;
+}
+const framesDone=r=>{const nb=nextBall(r||[]);return nb.done?10:nb.frame};
 // Score up to 5 cards. Straights and flushes need all 5; fewer cards can still make pairs, trips and quads.
 function score5(cs){
   const rv=cs.map(c=>RANKS.indexOf(c[0])+2).sort((a,b)=>b-a),cnt={};rv.forEach(v=>cnt[v]=(cnt[v]||0)+1);
@@ -568,7 +576,8 @@ export default async function handler(req, res) {
       if (await redis.get(K.liveMeta)) return bad(res, "A night is already in progress");
       for (const k of [K.live, K.liveTot, K.liveJar, K.liveNotes, K.liveShots]) await redis.del(k);
       const roster = values(await redis.hgetall(K.bowlers)).map((b) => b.id);
-      const lineup = Array.isArray(body.lineup) ? roster.filter((id) => body.lineup.includes(id)) : roster;
+      // Lineup keeps the order given: that's the bowling order.
+      const lineup = Array.isArray(body.lineup) ? body.lineup.filter((id, i, a) => roster.includes(id) && a.indexOf(id) === i) : roster;
       if (!lineup.length) return bad(res, "Pick at least one bowler for tonight");
       for (const k of pokerKeys()) await redis.del(k);
       for (let g = 0; g < 5; g++) await redis.rpush(K.deck + g, ...newDeck());
@@ -590,6 +599,26 @@ export default async function handler(req, res) {
       }
       const key = id + ":" + game;
       const prevLen = (normLive(parse(await redis.hget(K.live, key)) || []).r || []).length;
+      // Turn order: a new ball only goes in for the bowler who's up, and only finishes their current frame.
+      if (rolls.length > prevLen) {
+        const meta = parse(await redis.get(K.liveMeta)), order = Array.isArray(meta.lineup) ? meta.lineup : [];
+        if (order.includes(id)) {
+          const liveAll = (await redis.hgetall(K.live)) || {}, tot = (await redis.hgetall(K.liveTot)) || {}, skip = ((meta.skip || {})[game]) || [];
+          const rOf = (b) => (liveAll[b + ":" + game] ? normLive(parse(liveAll[b + ":" + game])).r : []);
+          const out = (b) => skip.includes(b) || tot[b + ":" + game] !== undefined;
+          // To bowl frame F, everyone ahead in the order must have finished F, and everyone behind must have finished F-1.
+          const p = order.indexOf(id), F = frameOfRolls(rolls)[rolls.length - 1];
+          const blocked = order.some((q, qi) => q !== id && !out(q) && framesDone(rOf(q)) < (qi < p ? F + 1 : F));
+          if (blocked) {
+            const t = turnOf(order, rOf, out);
+            if (t && t.id !== id) {
+              const who = parse(await redis.hget(K.bowlers, t.id));
+              return bad(res, `It’s ${who ? who.name : "another bowler"}’s turn (frame ${t.frame + 1}). Wait for them to finish.`);
+            }
+            return bad(res, "One frame at a time: the next bowler is up after this frame");
+          }
+        }
+      }
       const L = cleanLeaves(rolls, body.leaves);
       const M = cleanMarks(rolls, body.marks);
       if (rolls.length) await redis.hset(K.live, { [key]: JSON.stringify({ r: rolls, s: splits, L, M }) });
@@ -617,11 +646,21 @@ export default async function handler(req, res) {
       if (custom) { e.label = custom.label; e.fine = custom.fine; } // kept even if the button is deleted later
       await redis.hset(K.liveJar, { [e.id]: JSON.stringify(e) });
       if ((k === "splitConv" || k === "bigSplitConv") && (await getSettings()).pokerOn) await pokerResync(b, e.g);
+    } else if (action === "skipTurn") {
+      // A bowler who isn't bowling this game shouldn't hold up the turn order.
+      const meta = parse(await redis.get(K.liveMeta));
+      if (!meta) return bad(res, "No night in progress");
+      const g = String(Math.round(+body.game)), id = String(body.bowlerId || "");
+      meta.skip = meta.skip || {};
+      const cur = new Set(meta.skip[g] || []);
+      if (body.on === false) cur.delete(id); else cur.add(id);
+      meta.skip[g] = [...cur];
+      await redis.set(K.liveMeta, JSON.stringify(meta));
     } else if (action === "setLineup") {
       const meta = parse(await redis.get(K.liveMeta));
       if (!meta) return bad(res, "No night in progress");
       const roster = values(await redis.hgetall(K.bowlers)).map((b) => b.id);
-      const lineup = roster.filter((id) => Array.isArray(body.lineup) && body.lineup.includes(id));
+      const lineup = (Array.isArray(body.lineup) ? body.lineup : []).filter((id, i, a) => roster.includes(id) && a.indexOf(id) === i);
       if (!lineup.length) return bad(res, "Keep at least one bowler in tonight's lineup");
       await redis.set(K.liveMeta, JSON.stringify({ ...meta, lineup }));
     } else if (action === "addShot" || action === "removeShot") {
